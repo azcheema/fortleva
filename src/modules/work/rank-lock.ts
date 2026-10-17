@@ -506,7 +506,7 @@ export async function lockPredecessor(
 }
 
 /** The key for a new row at the bottom of the project — the caller holds the project rank lock. */
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 export async function bottomRank(tx: TenantDb, tenantId: string, projectId: string): Promise<string> {
   const last = await lockPredecessor(tx, tenantId, projectId, null, NIL_UUID);

@@ -21,6 +21,8 @@ const look: ActivityLookups = {
   contact: (name) => `contact:${name ?? "?"}`,
   milestone: (name) => `milestone:${name ?? "?"}`,
   label: (name) => `label:${name ?? "?"}`,
+  rhythm: (r) => `rhythm:${r}`,
+  task: (n) => `task:${n}`,
 };
 
 const row = (partial: Partial<ActivityRow> & { field: string }): ActivityRow => ({
@@ -34,6 +36,29 @@ const row = (partial: Partial<ActivityRow> & { field: string }): ActivityRow => 
 });
 
 describe("activitySentence", () => {
+  it("the repeat rows (slice 127): a person's setting, and the copier's two", () => {
+    expect(activitySentence(row({ field: "repeat", newValue: "MONTHLY:2026-11-01" }), look)).toEqual({
+      key: "repeatSet",
+      rhythm: "rhythm:MONTHLY",
+      date: "day:2026-11-01",
+    });
+    expect(
+      activitySentence(row({ field: "repeat", oldValue: "MONTHLY:2026-11-01", newValue: "WEEKLY:2026-10-24" }), look),
+    ).toEqual({ key: "repeatChanged", rhythm: "rhythm:WEEKLY", date: "day:2026-10-24" });
+    expect(activitySentence(row({ field: "repeat", oldValue: "WEEKLY:2026-10-24" }), look)).toEqual({ key: "repeatStopped" });
+    expect(activitySentence(row({ field: "repeatedFrom", oldValue: "11" }), look)).toEqual({ key: "repeatedFrom", task: "task:11" });
+    expect(activitySentence(row({ field: "repeatCopied", newValue: "15" }), look)).toEqual({ key: "repeatCopied", task: "task:15" });
+    // Anything it cannot read is the fallback, never a wrong sentence.
+    expect(activitySentence(row({ field: "repeat", newValue: "DAILY:2026-11-01" }), look)).toEqual({ key: "fieldChanged", field: "repeat" });
+    expect(activitySentence(row({ field: "repeat", oldValue: "junk", newValue: "MONTHLY:2026-11-01" }), look)).toEqual({
+      key: "fieldChanged",
+      field: "repeat",
+    });
+    expect(activitySentence(row({ field: "repeat" }), look)).toEqual({ key: "fieldChanged", field: "repeat" });
+    expect(activitySentence(row({ field: "repeatedFrom", oldValue: "0" }), look)).toEqual({ key: "fieldChanged", field: "repeatedFrom" });
+    expect(activitySentence(row({ field: "repeatCopied", newValue: "x" }), look)).toEqual({ key: "fieldChanged", field: "repeatCopied" });
+  });
+
   it("the two rows without values", () => {
     expect(activitySentence(row({ field: "created" }), look)).toEqual({ key: "created" });
     expect(activitySentence(row({ field: "description" }), look)).toEqual({ key: "descriptionEdited" });

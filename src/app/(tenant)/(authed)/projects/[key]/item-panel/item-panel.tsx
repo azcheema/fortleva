@@ -6,7 +6,7 @@ import { Callout, EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { DocumentListItem } from "@/documents/service";
-import { isoDateOf } from "@/lib/duration";
+import { dateColumn, isoDateOf } from "@/lib/duration";
 import { formatDay, formatDuration, type DurationStyle } from "@/lib/format";
 import type { WeekStart } from "@/lib/week";
 import { childTypeOf } from "@/lib/enum-map";
@@ -16,6 +16,7 @@ import type {
   ItemComments,
   ItemDetailCaps,
   ItemLabels,
+  ItemRepeat,
   MilestoneEntry,
   ResolvedItemDetail,
   ResolvedItemSubtasks,
@@ -34,6 +35,7 @@ import { EstimateField } from "./estimate-field";
 import { LabelsField } from "./labels-field";
 import { MilestoneField } from "./milestone-field";
 import { PriorityField } from "./priority-field";
+import { RepeatField } from "./repeat-field";
 import { RequestBand } from "./request-band";
 import { StateField } from "./state-field";
 import { SubtasksSection } from "./subtasks-section";
@@ -73,6 +75,7 @@ export async function ItemPanel({
   durationStyle,
   weekStart,
   showIsoWeek,
+  workspaceTimeZone,
   error,
   surface,
   fullPageHref,
@@ -85,6 +88,7 @@ export async function ItemPanel({
   activity,
   subtasks,
   comments,
+  repeat,
   timer,
 }: {
   item: ResolvedItemDetail;
@@ -102,6 +106,12 @@ export async function ItemPanel({
   weekStart: WeekStart;
   /** REQUIRED — the tenant's `ui.showIsoWeek`: the due-date calendar shows week numbers. */
   showIsoWeek: boolean;
+  /**
+   * REQUIRED — the WORKSPACE's `ui.timezone` (slice 127): the Repeat row's
+   * "today" is the workspace's, the day the copier and `setItemRepeat` decide
+   * by — never the member's own zone, which can be a day apart near midnight.
+   */
+  workspaceTimeZone: string;
   /** A failed download/delete bounces back as `?error=` (the Files-tab
    * contract) — the panel must show it, or a failure looks like nothing
    * happened (the standing rule). */
@@ -139,6 +149,8 @@ export async function ItemPanel({
   subtasks: ResolvedItemSubtasks;
   /** The Comments section's rows — `getItemDetail`'s, each with the reading member's own caps (slice 10). */
   comments: ItemComments;
+  /** REQUIRED — whether it repeats, or is an older copy of a task that does (`getItemDetail`'s, slice 127). */
+  repeat: ItemRepeat;
   /**
    * REQUIRED — `loadPanelTimer`'s answer: the member's timer as the pill
    * sees it, or `null` where no timer control belongs (no `time:track`,
@@ -246,6 +258,8 @@ export async function ItemPanel({
   // island's plain text lands.
   // Coining a label from the picker needs the word's right AND this task's.
   const canCreateLabel = canEdit && itemCaps.manageLabels;
+  // Setting a repeat needs edit AND create (`caps.repeat`); a client's request never repeats.
+  const canRepeat = itemCaps.repeat && item.kind !== "REQUEST";
   const railLabel = "min-h-8 py-1.5 text-muted-foreground";
   const railText = "min-h-8 py-1.5";
   const railPicker = "flex min-h-8 items-center";
@@ -377,6 +391,33 @@ export async function ItemPanel({
             canEdit={canEdit}
           />
         </dd>
+        {/* Repeat (slice 127): a row where there is something to show or
+            to set — a task that repeats or is an older copy of one, or a
+            member who may set it (never on a client's request, which
+            `setItemRepeat` refuses). The island renders its own `<dt>`/`<dd>`
+            pairs: Next copy exists only while the task repeats. */}
+        {repeat !== null || canRepeat ? (
+          <RepeatField
+            key={item.id}
+            itemId={item.id}
+            itemNumber={item.number}
+            projectKey={projectKey}
+            surface={surface}
+            repeat={repeat}
+            nextLabel={repeat?.role === "holder" ? formatDay(locale, dateColumn(repeat.nextOn)) : null}
+            holderHref={
+              repeat?.role === "copy" && !repeat.holderDeleted
+                ? panelItemHref(surface, returnTo, projectKey, repeat.holderNumber)
+                : null
+            }
+            timeZone={workspaceTimeZone}
+            weekStart={weekStart}
+            showIsoWeek={showIsoWeek}
+            canEdit={canRepeat}
+            labelClassName={railLabel}
+            valueClassName={railPicker}
+          />
+        ) : null}
         <dt className={railLabel}>{t("properties.visibility")}</dt>
         {/* The island renders its own `<dd>` — and, under it, full-width
             rows of its own: the make-private question (slice 72, §5.9 in
@@ -600,6 +641,7 @@ export async function ItemPanel({
         <ActivitySection
           activity={activity}
           pageHref={fullPageHref}
+          projectKey={projectKey}
           states={states}
           durationStyle={durationStyle}
         />

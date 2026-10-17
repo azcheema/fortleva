@@ -2127,6 +2127,11 @@
     "BIN_PARENT_DELETED": "Den överordnade uppgiften är också borttagen. Ta tillbaka den först.",
     "BIN_SOURCE_TWIN": "En uppgift som importerats från samma kort finns redan i projektet, så den här kan inte tas tillbaka.",
     "BIN_BUSY": "Någon annan ändrade projektet i samma stund, så inget togs tillbaka. Försök igen om en liten stund.",
+    "REPEAT_NOT_ALLOWED": "En kunds förfrågan kan inte upprepas.",
+    "REPEAT_NOT_NEWEST": "Det här är en äldre kopia. Nästa kopior görs från den senaste – ändra upprepningen där.",
+    "REPEAT_DAY_INVALID": "Välj en dag efter i dag, högst två år fram.",
+    "REPEAT_NESTED": "Uppgiften ligger i en uppgift som upprepas, eller har en sådan under sig, så den kan inte också upprepas.",
+    "REPEAT_TOO_BIG": "Uppgiften är för stor för att upprepas: högst 100 uppgifter under den, och deras beskrivningar tillsammans högst 2 MB.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
     "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
@@ -3286,7 +3291,9 @@
         "clientAssignee": "Kundens ansvariga",
         "clientDone": "Kundens klarmarkering",
         "checklist": "Checklista",
-        "checklistValue": "{done} av {total} klara"
+        "checklistValue": "{done} av {total} klara",
+        "repeat": "Upprepa",
+        "nextCopy": "Nästa kopia"
       },
       "description": {
         "label": "Beskrivning",
@@ -3486,6 +3493,43 @@
         "changed": "Förfallodatumet ändrades till {date}",
         "cleared": "Förfallodatumet togs bort"
       },
+      "repeat": {
+        "trigger": "Upprepa: {rhythm}",
+        "triggerEmpty": "Upprepa: upprepas inte",
+        "input": "Upprepa — hur ofta en ny kopia av uppgiften dyker upp",
+        "search": "Varje vecka, varje månad…",
+        "empty": "Inget matchande intervall.",
+        "never": "Upprepas inte",
+        "rhythm": {
+          "WEEKLY": "Varje vecka",
+          "BIWEEKLY": "Varannan vecka",
+          "MONTHLY": "Varje månad",
+          "QUARTERLY": "Var tredje månad",
+          "YEARLY": "Varje år"
+        },
+        "inSentence": {
+          "WEEKLY": "varje vecka",
+          "BIWEEKLY": "varannan vecka",
+          "MONTHLY": "varje månad",
+          "QUARTERLY": "var tredje månad",
+          "YEARLY": "varje år"
+        },
+        "startsOn": "första {date}",
+        "keepsDay": "nästa {date}",
+        "stop": "Sluta upprepa",
+        "nextTrigger": "Nästa kopia: {date}",
+        "nextInput": "Nästa kopia — skriv ett datum efter i dag",
+        "nextSearch": "2026-11-01…",
+        "nextEmpty": "Datum anges som 2026-11-01, efter i dag och högst två år fram.",
+        "setNext": "Gör nästa kopia den {date}",
+        "note": "Varje kopia ska vara klar dagen innan nästa dyker upp, och är dold för kunden från början.",
+        "projectClosed": "Inga kopior görs medan projektet är pausat, avslutat, avbrutet eller arkiverat, eller kunden är arkiverad.",
+        "copyOf": "Upprepas från {key}",
+        "holderDeleted": "Pausad: {key} är borttagen",
+        "changed": "Upprepas {rhythm}, nästa kopia {date}",
+        "stopped": "Upprepas inte längre",
+        "failed": "Upprepningen sparades inte. Panelen visar den nuvarande inställningen."
+      },
       "assignee": {
         "trigger": "Ansvarig: {name}",
         "triggerContact": "Ansvarig: {name}, hos kunden",
@@ -3599,7 +3643,12 @@
         "commented": "kommenterade",
         "commentEdited": "redigerade en kommentar",
         "commentDeleted": "tog bort en kommentar",
-        "commentVisibilityChanged": "ändrade en kommentars synlighet till {to}"
+        "commentVisibilityChanged": "ändrade en kommentars synlighet till {to}",
+        "repeatSet": "ställde in att uppgiften upprepas {rhythm}, första kopian {date}",
+        "repeatChanged": "ändrade upprepningen till {rhythm}, nästa kopia {date}",
+        "repeatStopped": "slutade upprepa uppgiften",
+        "repeatedFrom": "skapade den här som nästa kopia av {task}",
+        "repeatCopied": "skapade nästa kopia, {task}"
       },
       "timer": {
         "start": "Starta timer",

@@ -242,6 +242,8 @@ const DBTEST_PREFIXES = [
   // Slice 124, project templates — `src/modules/work/templates/templates.dbtest.ts`,
   // `setupTenant("tpl")`.
   "tpl-",
+  // Slice 127, repeating tasks — `src/modules/work/repeat.dbtest.ts`, `setupTenant("repeat")`.
+  "repeat-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -2911,6 +2913,57 @@ async function templateSource(tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * A task's repeat made DUE (slice 127, `repeat.spec.ts`): its series' next
+ * day planted at YESTERDAY in UTC — on or before the workspace's today in
+ * every zone, so the copier owes a copy now. The member's Next copy row only
+ * takes days after today; this is how a spec reaches "its day has come"
+ * without waiting for it. A throwaway workspace only.
+ */
+async function repeatDue(tenantId: string, projectKey: string, number: string): Promise<void> {
+  if (!tenantId || !projectKey || !number) throw new Error("repeat-due: a tenant id, a project key and a task number");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  try {
+    const project = await db.project.findFirstOrThrow({ where: { tenantId, key: projectKey }, select: { id: true } });
+    const item = await db.workItem.findFirstOrThrow({
+      where: { tenantId, projectId: project.id, number: Number(number) },
+      select: { id: true },
+    });
+    const series = await db.workItemRepeat.findFirstOrThrow({
+      where: { tenantId, workItemId: item.id },
+      select: { id: true, rhythm: true },
+    });
+    if (series.rhythm !== "WEEKLY" && series.rhythm !== "BIWEEKLY") {
+      // A month rhythm's day must land on its anchor (the CHECK) — the spec uses a week one.
+      throw new Error("repeat-due: plants a week rhythm only");
+    }
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    await db.workItemRepeat.update({ where: { id: series.id }, data: { nextOn: new Date(`${yesterday}T00:00:00.000Z`) } });
+    process.stdout.write(`${MARKER}${JSON.stringify({ nextOn: yesterday })}\n`);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
+ * The repeating-task copier for ONE throwaway workspace (slice 127,
+ * `repeat.spec.ts`) — `makeRepeatCopies`, exactly what the jobs route runs
+ * per workspace, never the route itself (which runs every sending tenant of
+ * the database: AGENTS.md).
+ */
+async function runRepeats(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("run-repeats: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  await db.$disconnect();
+  const { makeRepeatCopies } = await import("../../src/modules/work/repeat-copies");
+  const r = await makeRepeatCopies(tenantId);
+  process.stdout.write(`${MARKER}${JSON.stringify({ made: r.made, failed: r.failed })}\n`);
+}
+
 /** Every project template of a throwaway workspace deleted (`templates.spec.ts`'s afterAll, pass or fail). */
 async function clearTemplates(tenantId: string): Promise<void> {
   if (!tenantId) throw new Error("clear-templates: a tenant id");
@@ -4394,6 +4447,8 @@ const main = async (): Promise<void> => {
   if (command === "reset-stage-preset") return resetStagePreset(argument!);
   if (command === "template-source") return templateSource(argument!);
   if (command === "clear-templates") return clearTemplates(argument!);
+  if (command === "repeat-due") return repeatDue(argument!, process.argv[4]!, process.argv[5]!);
+  if (command === "run-repeats") return runRepeats(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

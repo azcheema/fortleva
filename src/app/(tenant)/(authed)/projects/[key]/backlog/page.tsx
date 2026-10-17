@@ -158,6 +158,7 @@ export default async function ProjectBacklogPage({
             activity={peekItem.activity}
             subtasks={peekItem.subtasks}
             comments={peekItem.comments}
+            repeat={peekItem.repeat}
             itemKey={`${project.key}-${peekItem.item.number}`}
             projectId={project.id}
             projectKey={project.key}
@@ -173,6 +174,7 @@ export default async function ProjectBacklogPage({
             durationStyle={prefs.durationStyle}
             weekStart={prefs.weekStart}
             showIsoWeek={prefs.showIsoWeek}
+            workspaceTimeZone={prefs.timezone}
             error={error}
             timer={timer}
           />

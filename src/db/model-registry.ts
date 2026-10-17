@@ -118,6 +118,10 @@ export const MODEL_CLASSES = {
     // task an import wrote.
     "importJob",
     "importJobItem",
+    // Slice 127 — repeating tasks (C103): one row per series, and one per
+    // task of a series.
+    "workItemRepeat",
+    "workItemRepeatItem",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -303,6 +307,11 @@ export const RLS_CLASSES = {
     // The tasks themselves are `work_item` rows (class B, born INTERNAL).
     "importJob",
     "importJobItem",
+    // Slice 127 — repeating tasks (C103): a series' rhythm, its next day and
+    // which task the next copy is made from, and which tasks are its copies.
+    // The agency's routine; the copies are `work_item` rows, born INTERNAL.
+    "workItemRepeat",
+    "workItemRepeatItem",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

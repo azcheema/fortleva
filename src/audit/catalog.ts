@@ -382,6 +382,18 @@ export const AUDIT_EVENTS = {
   // `files`, `comments`, and `madePrivate` / `endedContactAssignment` when
   // the client could see it (it always comes back private).
   "work_item.restored": TENANT,
+  // Slice 127 (C103) — a person starts, changes or stops a task's repeat:
+  // `{ number, projectId, from, to }`, each `{ rhythm, nextOn, anchorDay }` or
+  // null; an older copy stopping a series whose newest is deleted adds
+  // `newestId`, `newestDeleted`. A standing instruction to make tasks, so it
+  // is not a routine edit. The one SYSTEM row: the copier moving a series past
+  // a day already copied (`reason: "day_already_made"`, `madeFor`). Each copy
+  // the jobs route makes audits `work_item.created` as SYSTEM, with
+  // `repeatId`, and on the copy `repeatedFromId`, `madeFor`, `nextOn` (where
+  // the series moved), `leftOut` / `descriptionsLeftOut` when the tree passed
+  // its bounds — or `copyOf` on a copied subtask; `assigneeDropped` when its
+  // assignee could no longer take it.
+  "work_item.repeat_changed": TENANT,
   "import_job.started": TENANT,
   "import_job.finished": TENANT,
   "import_job.undone": TENANT,

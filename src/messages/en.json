@@ -2127,6 +2127,11 @@
     "BIN_PARENT_DELETED": "Its parent task is deleted too. Bring that back first.",
     "BIN_SOURCE_TWIN": "A task imported from the same card is already in this project, so this one can't come back.",
     "BIN_BUSY": "Someone else was changing this project at the same moment, so nothing was brought back. Try again in a moment.",
+    "REPEAT_NOT_ALLOWED": "A client's request can't repeat.",
+    "REPEAT_NOT_NEWEST": "This is an older copy. The next copies are made from the newest one — change the repeat there.",
+    "REPEAT_DAY_INVALID": "Pick a day after today, at most two years ahead.",
+    "REPEAT_NESTED": "This task is inside a repeating task, or has one inside it, so it can't repeat too.",
+    "REPEAT_TOO_BIG": "This task is too big to repeat: at most 100 tasks under it, and their descriptions together at most 2 MB.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
     "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
@@ -3286,7 +3291,9 @@
         "clientAssignee": "Client assignee",
         "clientDone": "Client’s completion",
         "checklist": "Checklist",
-        "checklistValue": "{done} of {total} done"
+        "checklistValue": "{done} of {total} done",
+        "repeat": "Repeat",
+        "nextCopy": "Next copy"
       },
       "description": {
         "label": "Description",
@@ -3486,6 +3493,43 @@
         "changed": "Due date changed to {date}",
         "cleared": "Due date removed"
       },
+      "repeat": {
+        "trigger": "Repeat: {rhythm}",
+        "triggerEmpty": "Repeat: doesn't repeat",
+        "input": "Repeat — how often a fresh copy of this task appears",
+        "search": "Every week, every month…",
+        "empty": "No matching rhythm.",
+        "never": "Doesn't repeat",
+        "rhythm": {
+          "WEEKLY": "Every week",
+          "BIWEEKLY": "Every 2 weeks",
+          "MONTHLY": "Every month",
+          "QUARTERLY": "Every 3 months",
+          "YEARLY": "Every year"
+        },
+        "inSentence": {
+          "WEEKLY": "every week",
+          "BIWEEKLY": "every 2 weeks",
+          "MONTHLY": "every month",
+          "QUARTERLY": "every 3 months",
+          "YEARLY": "every year"
+        },
+        "startsOn": "first {date}",
+        "keepsDay": "next {date}",
+        "stop": "Stop repeating",
+        "nextTrigger": "Next copy: {date}",
+        "nextInput": "Next copy — type a date after today",
+        "nextSearch": "2026-11-01…",
+        "nextEmpty": "Dates look like 2026-11-01, after today and at most two years ahead.",
+        "setNext": "Make the next copy on {date}",
+        "note": "Each copy is due the day before the next one appears, and starts hidden from the client.",
+        "projectClosed": "No copies are made while the project is paused, completed, cancelled or archived, or its client is archived.",
+        "copyOf": "Repeats from {key}",
+        "holderDeleted": "Paused: {key} is deleted",
+        "changed": "Repeats {rhythm}, next copy {date}",
+        "stopped": "Stopped repeating",
+        "failed": "The repeat did not save. The panel shows the current setting."
+      },
       "assignee": {
         "trigger": "Assignee: {name}",
         "triggerContact": "Assignee: {name}, at the client",
@@ -3599,7 +3643,12 @@
         "commented": "commented",
         "commentEdited": "edited a comment",
         "commentDeleted": "deleted a comment",
-        "commentVisibilityChanged": "changed a comment’s visibility to {to}"
+        "commentVisibilityChanged": "changed a comment’s visibility to {to}",
+        "repeatSet": "set this to repeat {rhythm}, first copy {date}",
+        "repeatChanged": "changed the repeat to {rhythm}, next copy {date}",
+        "repeatStopped": "stopped this repeating",
+        "repeatedFrom": "created this as the next copy of {task}",
+        "repeatCopied": "created the next copy, {task}"
       },
       "timer": {
         "start": "Start timer",

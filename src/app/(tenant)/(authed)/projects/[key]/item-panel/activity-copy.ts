@@ -1,5 +1,6 @@
 import type { VisibilityValue } from "@/components/semantic";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
+import { parseRepeatValue, type RepeatRhythm } from "@/lib/repeat-rules";
 import { isIsoDate } from "@/lib/week";
 import type { ActivityEntry } from "@/modules/work";
 
@@ -49,6 +50,10 @@ export type ActivityLookups = {
   milestone: (name: string | null) => string;
   /** A resolved label name, or the "Unknown" word for a label since deleted. */
   label: (name: string | null) => string;
+  /** A repeat's rhythm as it reads inside a sentence ("every month"). */
+  rhythm: (value: RepeatRhythm) => string;
+  /** A task of this project by its number, as its key ("ACME-14"). */
+  task: (number: number) => string;
 };
 
 export type ActivitySentence =
@@ -81,6 +86,11 @@ export type ActivitySentence =
   | { key: "commentEdited" }
   | { key: "commentDeleted" }
   | { key: "commentVisibilityChanged"; to: string }
+  | { key: "repeatSet"; rhythm: string; date: string }
+  | { key: "repeatChanged"; rhythm: string; date: string }
+  | { key: "repeatStopped" }
+  | { key: "repeatedFrom"; task: string }
+  | { key: "repeatCopied"; task: string }
   | { key: "fieldChanged"; field: string };
 
 export type ActivityRow = Pick<
@@ -105,6 +115,13 @@ const minutes = (v: string | null): number | null => {
 
 /** The `targetDate` columns hold "YYYY-MM-DD" (items.ts) — a real calendar day, or nothing. */
 const day = (v: string | null): string | null => (isIsoDate(v) ? v : null);
+
+/** A task number as the repeat rows store it (repeat-copies.ts: decimal digits) — nothing else is one. */
+const taskNumber = (v: string | null): number | null => {
+  if (v === null || !MINUTES_RE.test(v)) return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
+};
 
 export function activitySentence(row: ActivityRow, look: ActivityLookups): ActivitySentence {
   const fallback: ActivitySentence = { key: "fieldChanged", field: row.field };
@@ -218,6 +235,27 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
     case "commentVisibility":
       if (!isVisibility(row.newValue)) return fallback;
       return { key: "commentVisibilityChanged", to: look.visibility(row.newValue) };
+    // The repeat rows (slice 127). A person's setting: `RHYTHM:YYYY-MM-DD`
+    // old and new (repeat.ts), read strictly — set, changed, stopped. The
+    // copier's two (System): on a copy, the task it was made from; on that
+    // task, the copy it made — each a task NUMBER, drawn as this project's key.
+    case "repeat": {
+      const from = parseRepeatValue(row.oldValue);
+      const to = parseRepeatValue(row.newValue);
+      if (to !== null && from === null && row.oldValue === null)
+        return { key: "repeatSet", rhythm: look.rhythm(to.rhythm), date: look.day(to.nextOn) };
+      if (to !== null && from !== null) return { key: "repeatChanged", rhythm: look.rhythm(to.rhythm), date: look.day(to.nextOn) };
+      if (to === null && row.newValue === null && from !== null) return { key: "repeatStopped" };
+      return fallback;
+    }
+    case "repeatedFrom": {
+      const n = taskNumber(row.oldValue);
+      return n === null ? fallback : { key: "repeatedFrom", task: look.task(n) };
+    }
+    case "repeatCopied": {
+      const n = taskNumber(row.newValue);
+      return n === null ? fallback : { key: "repeatCopied", task: look.task(n) };
+    }
     default:
       return fallback;
   }

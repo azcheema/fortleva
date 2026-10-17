@@ -319,6 +319,8 @@ model Tenant {
   monthlyReportDrafts            MonthlyReportDraft[]
   importJobs                     ImportJob[]
   importJobItems                 ImportJobItem[]
+  workItemRepeats                WorkItemRepeat[] // slice 127
+  workItemRepeatItems            WorkItemRepeatItem[] // slice 127
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -2856,6 +2858,8 @@ model WorkItem {
   subscribers     WorkItemSubscriber[]
   timeEntries     TimeEntry[] // 2T
   importWrites    ImportJobItem[] // Phase 6 slice 121
+  repeatHeld      WorkItemRepeat? // slice 127 — the series whose next copy is made from this task
+  repeatMember    WorkItemRepeatItem? // slice 127 — the series this task belongs to
 
   @@unique([tenantId, projectId, number]) // human key ACME-12
   @@unique([tenantId, projectId, rank]) // one position per item (retry-with-jitter)
@@ -2959,6 +2963,57 @@ model WorkItemLabel {
   @@id([tenantId, workItemId, labelId])
   @@index([tenantId, labelId])
   @@map("work_item_label")
+}
+
+/// Slice 127 (founder decision C103) — A REPEATING TASK: one row per series.
+/// `workItemId` is the task the NEXT copy is made from — always the newest;
+/// the jobs route makes the copy on `nextOn` (a workspace-local day) and
+/// moves this row onto it. Stopping a repeat DELETES the row. Class A
+/// (portal_deny): the agency's routine, never a client's to read.
+/// CHECKs (migration 20261031090000): `rhythm` is one of five; `anchorDay`
+/// (1–31) exactly for the month rhythms, and their `nextOn` lands on it or
+/// on a shorter month's last day. Rules: `src/lib/repeat-rules.ts`.
+model WorkItemRepeat {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  workItemId        String   @map("work_item_id")
+  /// WEEKLY | BIWEEKLY | MONTHLY | QUARTERLY | YEARLY (CHECK).
+  rhythm            String
+  anchorDay         Int?     @map("anchor_day") @db.SmallInt
+  nextOn            DateTime @map("next_on") @db.Date
+  createdByMemberId String?  @map("created_by_member_id") // attribution, no FK
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id])
+  workItem WorkItem             @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+  items    WorkItemRepeatItem[]
+
+  @@unique([tenantId, id]) // composite-FK target
+  @@unique([tenantId, workItemId])
+  @@index([tenantId, nextOn])
+  @@map("work_item_repeat")
+}
+
+/// Slice 127 — every task of a repeating series: the one the repeat was set
+/// on (`madeFor` NULL — one per series, a partial UNIQUE) and each copy, with
+/// the repeat day it was made for. A task is in at most one series (the key);
+/// a series has at most one task per day (UNIQUE — the belt against two
+/// copies for one day). Goes with its series. Class A.
+model WorkItemRepeatItem {
+  tenantId   String    @map("tenant_id")
+  repeatId   String    @map("repeat_id")
+  workItemId String    @map("work_item_id")
+  madeFor    DateTime? @map("made_for") @db.Date
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  repeat   WorkItemRepeat @relation(fields: [tenantId, repeatId], references: [tenantId, id], onDelete: Cascade)
+  workItem WorkItem       @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, workItemId])
+  @@unique([tenantId, repeatId, madeFor])
+  @@map("work_item_repeat_item")
 }
 
 /// Extra members on an item (not the assignee). Drives notifications

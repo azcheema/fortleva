@@ -320,6 +320,16 @@ export async function templateSource(tenantId: string): Promise<{ projectKey: st
   return runCli<{ projectKey: string; projectName: string }>(["template-source", tenantId]);
 }
 
+/** A task's repeat planted due — its next day yesterday in UTC (slice 127, `repeat.spec.ts`). */
+export async function repeatDue(tenantId: string, projectKey: string, number: number): Promise<{ nextOn: string }> {
+  return runCli<{ nextOn: string }>(["repeat-due", tenantId, projectKey, String(number)]);
+}
+
+/** The repeating-task copier for one throwaway workspace (slice 127) — never the jobs route. */
+export async function runRepeats(tenantId: string): Promise<{ made: number; failed: number }> {
+  return runCli<{ made: number; failed: number }>(["run-repeats", tenantId]);
+}
+
 /** Every project template of a throwaway workspace deleted (slice 124, `templates.spec.ts`'s afterAll). */
 export async function clearTemplates(tenantId: string): Promise<{ removed: number }> {
   return runCli<{ removed: number }>(["clear-templates", tenantId]);

@@ -259,6 +259,13 @@ export type DomainErrorCode =
   | "BIN_PARENT_DELETED" // its parent task is deleted too: bring that back first
   | "BIN_SOURCE_TWIN" // a task imported from the same card is in the project now
   | "BIN_BUSY" // the project's queue or a row stayed locked past the wait, twice
+  // Repeating tasks (slice 127 — src/modules/work/repeat.ts, C103; the rules
+  // are src/lib/repeat-rules.ts).
+  | "REPEAT_NOT_ALLOWED" // a client's request cannot repeat
+  | "REPEAT_NOT_NEWEST" // an older copy of a series: the next copies are made from the newest — change it there
+  | "REPEAT_DAY_INVALID" // the next copy's day must be after today and at most two years ahead
+  | "REPEAT_NESTED" // inside a repeating task, or with one inside it: the outer copies would take the inner ones' copies
+  | "REPEAT_TOO_BIG" // more than 100 tasks under it, or more than 2 MiB of descriptions (its own and theirs together)
   // The stage editors (slice 123 — src/modules/work/stage-editor.ts, C99 (a);
   // the rules are src/lib/stage-rules.ts).
   | "STAGE_NAME_TAKEN" // another stage of this project (or the default set) has that name, ignoring case

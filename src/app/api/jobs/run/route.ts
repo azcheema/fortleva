@@ -13,6 +13,7 @@ import { runInvoicePdfs } from "@/jobs/invoice-pdfs";
 import { runNotificationRetention } from "@/jobs/notification-retention";
 import { drainOutboxKick } from "@/jobs/outbox-kick";
 import { runPushes } from "@/jobs/push-sweep";
+import { runRepeatingTasks } from "@/jobs/repeating-tasks";
 import { runReportDrafts } from "@/jobs/report-drafts";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
@@ -67,6 +68,9 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * something to show gets the report the Make a report button would make,
  * private, in every sending workspace whose switch is on; it ADDS a PDF per
  * client per month, deletes nothing),
+ * and the repeating tasks (slice 127 — on each repeat day a series' newest
+ * task gets its next copy, private, and its assignee is told; it MAKES TASKS
+ * in every sending workspace, deletes nothing),
  * — and, since slice 122 (founder decision C98, going live), Vercel Cron
  * calls it every hour with GET (`vercel.json`), its `CRON_SECRET` the gate;
  * mail additionally leaves every five minutes through `/api/jobs/outbox`.
@@ -203,6 +207,20 @@ async function runAll(): Promise<NextResponse> {
     console.error(`jobs: report drafts failed: ${e instanceof Error ? e.name : typeof e}${code}`);
     reportDrafts = { failed: "discovery" };
   }
+  // Slice 127 (C103): repeating tasks — on each repeat day, in each sending
+  // workspace's zone, a series' newest task gets its next copy (private, due
+  // the day before the next one, given to whoever held it if they still can
+  // take it, who is told); it MAKES TASKS, deletes nothing; within 45 seconds
+  // of its own. Before the pushes, so their backstop carries the copies'
+  // notices too. Its failure is its own.
+  let repeatingTasks: Awaited<ReturnType<typeof runRepeatingTasks>> | { failed: "discovery" };
+  try {
+    repeatingTasks = await runRepeatingTasks();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: repeating tasks failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    repeatingTasks = { failed: "discovery" };
+  }
   // Phase 5 slice 106 (founder decision C74): phone and browser notifications —
   // the BACKSTOP for a push whose kick was lost (each is due for fifteen
   // minutes, then never), and the jobs above's own notifications, which their
@@ -254,6 +272,7 @@ async function runAll(): Promise<NextResponse> {
     fortnoxSend,
     websiteSpeed,
     reportDrafts,
+    repeatingTasks,
     invoicePdfs,
     contractPdfs,
     pushes,

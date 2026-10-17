@@ -152,23 +152,27 @@ const propertyLabelKey = (field: string): PropertyLabelKey | null =>
 export async function ActivitySection({
   activity,
   pageHref,
+  projectKey,
   states,
   durationStyle,
 }: {
   activity: ItemActivityPage;
   /** The full item page, bare (no query) — where older pages live, whichever surface renders this. */
   pageHref: string;
+  /** "ACME" — a repeat row names another task of this project by its key (slice 127). */
+  projectKey: string;
   /** The project's states, names resolved: a state ref renders as its name here. */
   states: readonly ResolvedWorkflowState[];
   durationStyle: DurationStyle;
 }) {
-  const [t, tCommon, tProps, tCat, tPriority, tVis, locale] = await Promise.all([
+  const [t, tCommon, tProps, tCat, tPriority, tVis, tRhythm, locale] = await Promise.all([
     getTranslations("projects.item.activity"),
     getTranslations("common"),
     getTranslations("projects.item.properties"),
     getTranslations("states.stateCategory"),
     getTranslations("states.priority"),
     getTranslations("visibility"),
+    getTranslations("projects.item.repeat.inSentence"),
     getLocale(),
   ]);
   // The instant every relative time on this render is measured from,
@@ -200,9 +204,11 @@ export async function ActivitySection({
     // for a Phase 3 contact, internal — is still a phase the row names.
     milestone: (name) => name ?? tCommon("unknown"),
     label: (name) => name ?? tCommon("unknown"),
+    rhythm: (r) => tRhythm(r),
+    task: (n) => `${projectKey}-${n}`,
   };
 
-  // Thirty sentences in five shapes — next-intl types the ICU arguments
+  // Thirty-five sentences in seven shapes — next-intl types the ICU arguments
   // per key, and every key in a group takes the same ones.
   const say = (s: ActivitySentence): string => {
     switch (s.key) {
@@ -213,7 +219,14 @@ export async function ActivitySection({
       case "commentDeleted":
       case "clientMarkedDone":
       case "clientUnmarkedDone":
+      case "repeatStopped":
         return t(s.key);
+      case "repeatSet":
+      case "repeatChanged":
+        return t(s.key, { rhythm: s.rhythm, date: s.date });
+      case "repeatedFrom":
+      case "repeatCopied":
+        return t(s.key, { task: s.task });
       case "titleChanged":
       case "priorityChanged":
       case "estimateChanged":

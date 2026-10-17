@@ -59,7 +59,7 @@ export default async function ProjectItemPage({
     activityBefore: before,
   });
   if (!panel) notFound();
-  const { item, states, caps, members, contacts, milestones, labels, activity, subtasks, comments } = panel;
+  const { item, states, caps, members, contacts, milestones, labels, activity, subtasks, comments, repeat } = panel;
 
   const [documents, prefs, timer] = await Promise.all([
     project.caps.viewDocuments
@@ -84,6 +84,7 @@ export default async function ProjectItemPage({
       activity={activity}
       subtasks={subtasks}
       comments={comments}
+      repeat={repeat}
       itemKey={`${project.key}-${item.number}`}
       projectId={project.id}
       projectKey={project.key}
@@ -99,6 +100,7 @@ export default async function ProjectItemPage({
       durationStyle={prefs.durationStyle}
       weekStart={prefs.weekStart}
       showIsoWeek={prefs.showIsoWeek}
+      workspaceTimeZone={prefs.timezone}
       error={error}
       timer={timer}
     />

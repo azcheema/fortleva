@@ -61,14 +61,40 @@ export async function writeActivityMany(
   ctx: WorkCtx,
   entries: readonly { readonly item: ItemRef; readonly change: ActivityChange }[],
 ): Promise<void> {
+  await insertActivityMany(tx, ctx.tenantId, ctx.actor.memberId, entries);
+}
+
+/**
+ * MANY history rows NOBODY caused — a job's: the repeating-task copier
+ * (slice 127, `repeat-copies.ts`), which runs as SYSTEM. Both actor
+ * columns stay NULL, which the panel shows as "System"
+ * (`ActivityActor.kind`), as `createRequest`'s and the import's rows have
+ * none of a member's. The same portal-safe decision, row by row: it is the
+ * one batch insert below.
+ */
+export async function writeSystemActivityMany(
+  tx: TenantDb,
+  tenantId: string,
+  entries: readonly { readonly item: ItemRef; readonly change: ActivityChange }[],
+): Promise<void> {
+  await insertActivityMany(tx, tenantId, null, entries);
+}
+
+/** THE ONE BATCH INSERT — the two batch wrappers above reach it; nothing else does. */
+async function insertActivityMany(
+  tx: TenantDb,
+  tenantId: string,
+  actorMemberId: string | null,
+  entries: readonly { readonly item: ItemRef; readonly change: ActivityChange }[],
+): Promise<void> {
   if (entries.length === 0) return;
   await tx.workItemActivity.createMany({
     data: entries.map(({ item, change }) => ({
-      tenantId: ctx.tenantId,
+      tenantId,
       clientId: item.clientId,
       projectId: item.projectId,
       workItemId: item.id,
-      actorMemberId: ctx.actor.memberId,
+      actorMemberId,
       actorContactId: null,
       field: change.field,
       oldValue: change.oldValue ?? null,

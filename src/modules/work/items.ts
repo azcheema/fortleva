@@ -16,6 +16,7 @@ import { guarded } from "./db-errors";
 import { raiseClientCommentsWithTask } from "./follow-task";
 import { notifyItemMembers } from "./notify";
 import { bottomRank, lockItemRow, lockProjectRanks } from "./rank-lock";
+import { readItemRepeat, type ItemRepeat } from "./repeat";
 import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, principalOf, transitionState, type WorkCtx } from "./states";
 import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
@@ -621,6 +622,12 @@ export type ItemDetailCaps = {
    * on anything else there is nothing to end.
    */
   endRequest: boolean;
+  /**
+   * `work_item:edit` AND `work_item:create` — the Repeat row is a control
+   * (slice 127, `setItemRepeat`): a repeat is a standing instruction to
+   * create tasks.
+   */
+  repeat: boolean;
 };
 
 export type ItemDetailResult = {
@@ -660,6 +667,8 @@ export type ItemDetailResult = {
   subtasks: ItemSubtasks;
   /** The item's live comments, oldest first, each with its own caps (comments.ts, slice 10). */
   comments: ItemComments;
+  /** Whether it repeats, or is an older copy of a task that does (repeat.ts, slice 127). */
+  repeat: ItemRepeat;
 };
 
 /** `ItemDetail` with the state pair resolved — see `ResolvedItemList`. */
@@ -894,6 +903,9 @@ export async function getItemDetail(
             select: { id: true, name: true },
           })
         : [];
+    // The Repeat row (slice 127): two class-A rows and the newest task's
+    // number — in sequence, after the batches, for the reason above.
+    const repeat = await readItemRepeat(tx, ctx.tenantId, { id: row!.id, projectId });
     const item = row!;
     return {
       item: {
@@ -949,6 +961,7 @@ export async function getItemDetail(
         manageLabels: held.has("label:manage"),
         endRequest:
           held.has("work_item:triage") && held.has("work_item:triage_decline"),
+        repeat: canEdit && held.has("work_item:create"),
       },
       members,
       contacts,
@@ -957,6 +970,7 @@ export async function getItemDetail(
       activity,
       subtasks,
       comments,
+      repeat,
     };
   });
 }

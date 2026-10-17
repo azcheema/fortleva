@@ -25,6 +25,7 @@ import {
   setItemArchived,
   setItemLabel,
   setItemMilestone,
+  setItemRepeat,
   updateItemFields,
   type AssignmentCommitted,
   type BulkResult,
@@ -37,6 +38,7 @@ import {
   type ItemPrivateCommitted,
   type MakePrivateResult,
   type PrivacyPreview,
+  type RepeatCommitted,
   type VisibilityCommitted as WorkVisibilityCommitted,
   type WorkCtx,
 } from "@/modules/work";
@@ -44,6 +46,7 @@ import { PROJECT_KEY_RE } from "@/projects/service";
 import { MAX_ESTIMATE_MINUTES, dateColumn, isoDateOf } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { formatDay } from "@/lib/format";
+import { REPEAT_RHYTHMS } from "@/lib/repeat-rules";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { stateLabel } from "@/lib/state-label";
 import { ITEM_SURFACES, MAX_BULK_ITEMS, MAX_LABEL_NAME_LENGTH, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
@@ -195,6 +198,17 @@ const SetDueDate = Target.extend({
   targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
 });
 const SetAssignee = Target.extend({ memberId: uuid.nullable() });
+// Slice 127: a rhythm (start, or change keeping the next day), a next day, or
+// null to stop. `strict` on each, so a body carrying both is refused rather
+// than half-read.
+const SetRepeat = Target.extend({
+  repeat: z
+    .union([
+      z.object({ rhythm: z.enum(REPEAT_RHYTHMS) }).strict(),
+      z.object({ nextOn: z.string().refine((s) => isIsoDate(s)) }).strict(),
+    ])
+    .nullable(),
+});
 // NOT nullable, and that is the shape of the decision rather than a
 // zod habit: removing a contact assignee is `setItemAssigneeAction`
 // with a null member, because the row holds ONE assignment
@@ -240,6 +254,8 @@ export type LabelsChanged = LabelsCommitted;
 export type VisibilityCommitted = Omit<WorkVisibilityCommitted, "id">;
 /** The one make-private door's answer (slice 72): the single flip's contract, plus what else went private with it. */
 export type ItemPrivateResult = Omit<ItemPrivateCommitted, "id">;
+/** The service's setting as it now stands, with the next day formatted on the SERVER (the Due date's rule). */
+export type RepeatSettingCommitted = RepeatCommitted & { nextLabel: string | null };
 
 const FAILED = {
   state: "state.failed",
@@ -250,6 +266,7 @@ const FAILED = {
   visibility: "visibility.failed",
   milestone: "milestone.failed",
   labels: "labels.failed",
+  repeat: "repeat.failed",
 } as const;
 
 /**
@@ -353,6 +370,29 @@ export async function setItemDueDateAction(
       dueLabel: c.targetDate ? formatDay(locale, c.targetDate) : null,
       changed: c.changed,
     };
+  });
+  if (r.ok && r.value.changed) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Repeat (slice 127, founder decision C103): start, change or stop a task's
+ * repeat, or move its next copy's day. `setItemRepeat` decides everything —
+ * who (edit + create), the day's bounds by the WORKSPACE's day, an older copy
+ * refused — and its refusals reach the toast as their own sentences. The next
+ * day comes back formatted here, as the Due date's label does.
+ */
+export async function setItemRepeatAction(
+  input: z.input<typeof SetRepeat>,
+): Promise<ActionResult<RepeatSettingCommitted>> {
+  const ctx = await ctxOf();
+  const parsed = SetRepeat.safeParse(input);
+  if (!parsed.success) return { ok: false, message: await failureText(rawSurface(input), "repeat") };
+  const { itemId, projectKey, itemNumber, surface, repeat } = parsed.data;
+  const locale = await getLocale();
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), async () => {
+    const c = await setItemRepeat(ctx, itemId, repeat);
+    return { ...c, nextLabel: c.nextOn ? formatDay(locale, dateColumn(c.nextOn)) : null };
   });
   if (r.ok && r.value.changed) revalidate(projectKey);
   return r;

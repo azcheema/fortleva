@@ -123,6 +123,10 @@ export {
   type TriageVerb,
 } from "./triage-limits";
 export { updateItemDescription, type DescriptionSaved } from "./description";
+// Slice 127 — repeating tasks (C103): the member's verb and the panel's
+// shape. The copier (`repeat-copies.ts`) stays off the barrel: only the jobs
+// route and the harness run it.
+export { setItemRepeat, type ItemRepeat, type RepeatCommitted } from "./repeat";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";
 // Types only — `readItemSubtasks` stays off the barrel for the reason `readItemActivity` does (subtasks.ts).
 export { type ItemSubtasks, type SubtaskEntry } from "./subtasks";
