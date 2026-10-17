@@ -139,6 +139,11 @@ test("a task opens beside the list; a change made there reaches it; closing keep
   await page.keyboard.press("Enter");
   await assigned;
   await expect(rail(page).getByTestId("item-assignee").locator("[data-value]")).toHaveText("E2E Owner", WAIT);
+  // The picker must be GONE before the Escape meant for the panel: a popover
+  // still playing its exit is the top layer and takes the key (CI run
+  // 39063804125 — both attempts; the keymap spec's ladder waits the same way).
+  await expect(picker(page)).toHaveCount(0, WAIT);
+  await expect(rail(page).getByTestId("item-assignee")).toBeFocused(WAIT);
   await page.keyboard.press("Escape");
   await expect(peek).toHaveCount(0, WAIT);
   await expect(page).toHaveURL(/person=none/);
