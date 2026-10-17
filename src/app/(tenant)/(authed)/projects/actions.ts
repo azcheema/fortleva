@@ -4,8 +4,13 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 
+import { withTenant } from "@/db";
+import { hasAccess } from "@/entitlements/resolver";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
+import type { WeekStart } from "@/lib/week";
 import { requireTenantContext } from "@/members/tenant-context";
+import { listAssignableMembers } from "@/modules/work";
+import { readPreferences } from "@/preferences/service";
 import { listProjects } from "@/projects/service";
 
 import { createProjectFromForm } from "./create-from-form";
@@ -55,16 +60,58 @@ export type QuickCreateProject = { id: string; key: string; name: string; client
  */
 export async function quickCreateProjectsAction(): Promise<ActionResult<QuickCreateProject[]>> {
   const { membership, actor } = await requireTenantContext();
+  return runAction("/projects", () => quickCreateProjects(membership.tenantId, actor));
+}
+
+async function quickCreateProjects(
+  tenantId: string,
+  actor: Awaited<ReturnType<typeof requireTenantContext>>["actor"],
+): Promise<QuickCreateProject[]> {
+  const groups = await listProjects({ tenantId, actor });
+  return groups.flatMap((g) =>
+    g.projects.map((p) => ({
+      id: p.id,
+      key: p.key,
+      name: p.name,
+      clientName: g.clientName,
+      portalEnabled: p.portalEnabled,
+    })),
+  );
+}
+
+/**
+ * The "New task" form's fuller half (slice 129, founder decision C106 (c)):
+ * the Person list (`listAssignableMembers` — the panel's list) and the two
+ * settings its due-date calendar draws by. Null for a member who may not set
+ * those fields (`work_item:create` + `work_item:edit` on all four gates) —
+ * the dialog then stays title-only, and `createItem` refuses the fields
+ * regardless.
+ */
+export type QuickCreateForm = {
+  readonly members: readonly { id: string; name: string }[];
+  readonly weekStart: WeekStart;
+  readonly showIsoWeek: boolean;
+};
+
+export type QuickCreateOptions = {
+  readonly projects: QuickCreateProject[];
+  readonly form: QuickCreateForm | null;
+};
+
+/** What the create dialog reads when it opens — one round trip, the project list and the form's half together. */
+export async function quickCreateOptionsAction(): Promise<ActionResult<QuickCreateOptions>> {
+  const { membership, actor } = await requireTenantContext();
   return runAction("/projects", async () => {
-    const groups = await listProjects({ tenantId: membership.tenantId, actor });
-    return groups.flatMap((g) =>
-      g.projects.map((p) => ({
-        id: p.id,
-        key: p.key,
-        name: p.name,
-        clientName: g.clientName,
-        portalEnabled: p.portalEnabled,
-      })),
-    );
+    const projects = await quickCreateProjects(membership.tenantId, actor);
+    const settings = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, async (tx) => {
+      // In sequence, never a batch leg (authz-batches.test.ts).
+      if (!(await hasAccess(tx, membership.tenantId, actor, "work_item:create"))) return null;
+      if (!(await hasAccess(tx, membership.tenantId, actor, "work_item:edit"))) return null;
+      const prefs = await readPreferences(tx, membership.tenantId);
+      return { weekStart: prefs.weekStart, showIsoWeek: prefs.showIsoWeek };
+    });
+    if (settings === null) return { projects, form: null };
+    const members = await listAssignableMembers({ tenantId: membership.tenantId, actor });
+    return { projects, form: { ...settings, members } };
   });
 }

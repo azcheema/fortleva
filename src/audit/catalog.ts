@@ -394,6 +394,14 @@ export const AUDIT_EVENTS = {
   // its bounds — or `copyOf` on a copied subtask; `assigneeDropped` when its
   // assignee could no longer take it.
   "work_item.repeat_changed": TENANT,
+  // Slice 129 (C106) adds no action. A task made through the "New task"
+  // form audits `work_item.created` with `fields` — the NAMES of what was
+  // set at birth (description, assignee, priority, targetDate), never their
+  // values. A member's COPY audits `work_item.created` for every task it
+  // makes, as the member: on the copy `copiedFromId` and `brought` (the parts
+  // ticked), with `labelsLeftOff` / `assigneesLeftOff` when another project
+  // could not take them; on a copied subtask `copyOf`. Always
+  // `visibility: "INTERNAL"`.
   "import_job.started": TENANT,
   "import_job.finished": TENANT,
   "import_job.undone": TENANT,

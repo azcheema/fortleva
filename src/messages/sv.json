@@ -192,7 +192,11 @@
       "changeProject": "Byt projekt",
       "createdVisible": "{key} skapad — kunden kan se den",
       "createdVisiblePortalOff": "{key} skapad och markerad för kunden — projektets portal är avstängd, så de ser inget ännu",
-      "keepHint": "behåller ”Kunden kan se” till nästa"
+      "keepHint": "behåller ”Kunden kan se” till nästa",
+      "keepFieldsHint": "behåller person, datum och prioritet till nästa",
+      "descriptionLabel": "Beskrivning",
+      "descriptionPlaceholder": "Beskrivning (valfri) — en rad som börjar med - [ ] blir en kryssruta",
+      "submit": "Skapa uppgift"
     }
   },
   "home": {
@@ -2133,6 +2137,8 @@
     "REPEAT_DAY_INVALID": "Välj en dag efter i dag, högst två år fram.",
     "REPEAT_NESTED": "Uppgiften ligger i en uppgift som upprepas, eller har en sådan under sig, så den kan inte också upprepas.",
     "REPEAT_TOO_BIG": "Uppgiften är för stor för att upprepas: högst 100 uppgifter under den, och deras beskrivningar tillsammans högst 2 MB.",
+    "COPY_TOO_BIG": "Uppgiften är för stor för att kopieras med sina deluppgifter: högst 100 uppgifter under den, och deras beskrivningar tillsammans högst 2 MB. Bocka ur Deluppgifter eller Beskrivning för att kopiera resten.",
+    "COPY_BUSY": "Någon annan ändrade projektet i samma stund, så inget kopierades. Försök igen om en liten stund.",
     "AGREEMENT_ENDED": "Avtalet är avslutat och kan inte pausas, startas igen eller få ett nytt slutdatum. Ladda om sidan.",
     "CONTRACT_NOT_SIGNED": "Det går bara att ändra påminnelserna för ett undertecknat kontrakt. Ladda om sidan.",
     "FORTNOX_UNAVAILABLE": "Kopplingen till Fortnox är inte tillgänglig än.",
@@ -2560,6 +2566,36 @@
     },
     "showArchived": "Visa arkiverade",
     "hideArchived": "Dölj arkiverade",
+    "newTask": "Ny uppgift",
+    "copy": {
+      "action": "Kopiera…",
+      "title": "Kopiera {key}",
+      "description": "Gör en ny uppgift av den här, i det här projektet eller ett annat.",
+      "titleLabel": "Titel",
+      "projectLabel": "Projekt",
+      "projectOption": "{key} · {name} — {client}",
+      "bringLabel": "Ta med",
+      "parts": {
+        "description": "Beskrivning",
+        "subtasks": "{count, plural, one {# deluppgift} other {# deluppgifter}}",
+        "labels": "Etiketter",
+        "assignee": "Ansvarig",
+        "assigneeNamed": "Ansvarig ({name})",
+        "dates": "Start- och förfallodatum",
+        "subtasksMany": "Fler än 100 deluppgifter"
+      },
+      "tooManySubtasks": "Mer än 100 uppgifter under den — för många för att kopiera. Resten kan fortfarande kopieras.",
+      "descriptionsTooBig": "För mycket beskrivningstext för att kopieras tillsammans med deluppgifterna — bocka ur en av de två.",
+      "chooseProject": "Välj ett projekt…",
+      "labelsHint": "Etiketter som bara hör till {key} tas inte med.",
+      "assigneeHint": "Bara personer som kan arbeta i {key} behåller sina uppgifter.",
+      "note": "Kopian börjar dold för kunden. Kommentarer, filer och tid stannar hos originalet.",
+      "submit": "Kopiera uppgiften",
+      "copied": "Kopierad som {key}",
+      "copiedLeftOff": "Kopierad som {key}. Vissa etiketter eller personer passade inte i {project} och togs inte med.",
+      "failed": "Uppgiften kunde inte kopieras. Försök igen.",
+      "noProjects": "Det finns inget projekt du kan kopiera till."
+    },
     "status": {
       "PLANNED": "Planerat",
       "ACTIVE": "Aktivt",
@@ -3009,7 +3045,8 @@
         "delete": "Ta bort",
         "confirmDelete": "Ta bort uppgiften?",
         "deleteAnswered": "Ditt svar tillhör kunden — arkivera uppgiften i stället",
-        "deleteAnsweredArchived": "Ditt svar tillhör kunden"
+        "deleteAnsweredArchived": "Ditt svar tillhör kunden",
+        "copy": "Kopiera…"
       },
       "priorityLabel": "Prioritet",
       "dueLabel": "Förfallodatum",
@@ -3650,7 +3687,11 @@
         "repeatChanged": "ändrade upprepningen till {rhythm}, nästa kopia {date}",
         "repeatStopped": "slutade upprepa uppgiften",
         "repeatedFrom": "skapade den här som nästa kopia av {task}",
-        "repeatCopied": "skapade nästa kopia, {task}"
+        "repeatCopied": "skapade nästa kopia, {task}",
+        "copiedFrom": "kopierade den här från {task}",
+        "copiedTo": "gjorde en kopia av den här, {task}",
+        "copiedFromElsewhere": "kopierade den här från en uppgift i ett annat projekt",
+        "copiedToElsewhere": "gjorde en kopia av den här i ett annat projekt"
       },
       "timer": {
         "start": "Starta timer",

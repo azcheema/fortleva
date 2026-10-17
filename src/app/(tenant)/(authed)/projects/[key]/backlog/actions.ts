@@ -14,6 +14,8 @@ import {
   bulkShare,
   changeItemVisibility,
   changeState,
+  COPY_PARTS,
+  copyItem,
   createItem,
   createLabel,
   deleteItem,
@@ -21,6 +23,7 @@ import {
   makePrivateWithChildren,
   moveItem,
   previewMakePrivate,
+  readCopySource,
   restoreDeletedItem,
   setItemArchived,
   setItemLabel,
@@ -31,6 +34,8 @@ import {
   type BulkResult,
   type BulkShareResult,
   type ContactAssignmentCommitted,
+  type CopyDone,
+  type CopySource,
   type ItemCreated,
   type LabelsCommitted,
   type MilestoneAssigned,
@@ -47,6 +52,7 @@ import { MAX_ESTIMATE_MINUTES, dateColumn, isoDateOf } from "@/lib/duration";
 import { PRIORITIES, type Priority } from "@/lib/enum-map";
 import { formatDay } from "@/lib/format";
 import { REPEAT_RHYTHMS } from "@/lib/repeat-rules";
+import { DESCRIPTION_TEXT_CHARS } from "@/lib/rich-text/normalize";
 import { runAction, runForm, type ActionResult, type FormResult } from "@/lib/server-actions";
 import { stateLabel } from "@/lib/state-label";
 import { ITEM_SURFACES, MAX_BULK_ITEMS, MAX_LABEL_NAME_LENGTH, MAX_TITLE_LENGTH, itemReturnTo } from "@/lib/work-view";
@@ -84,12 +90,12 @@ const revalidate = (key: string) => {
  * created row coming back — the board's `createItemInStateAction` with
  * no column to aim at.
  *
- * It exists as its own export because the global `C` (the shell's quick
- * create, §5.x) needs the id and the number: ⌘Enter is create-AND-OPEN,
- * and a formatted success message cannot be navigated to.
- * `createItemAction` below is this function plus that message, so the
- * backlog's create row and the shell's dialog are one implementation of
- * "create a task here", not two.
+ * It was its own export because the global `C` (the shell's quick create,
+ * §5.x) needed the id and the number: ⌘Enter is create-AND-OPEN, and a
+ * formatted success message cannot be navigated to. Since slice 129 that
+ * dialog calls `createTaskAction` below (the fuller form), and this is the
+ * backlog create row's half: `createItemAction` is this function plus its
+ * message. Both reach the one `createItem`.
  *
  * `visibility` is what the surface SHOWED (slice 73): "Private to team"
  * unless a member who may share picked "Client can see" in a
@@ -135,6 +141,61 @@ export async function createItemAction(
   const r = await createItemAnywhereAction(projectId, projectKey, title, visibility);
   if (!r.ok) return r;
   return { ok: true, message: t("created", { key: `${projectKey}-${r.value.number}` }) };
+}
+
+/**
+ * THE "NEW TASK" FORM (slice 129, founder decision C106 (c)) — the shell's
+ * create dialog, opened by `C` or by a project page's New task button. The
+ * title and visibility as `createItemAnywhereAction` takes them, plus what the
+ * form's fuller half set: a description as PLAIN TEXT (it becomes a document
+ * in `createItem`, after its permission checks — the browser never sends
+ * one), a member, a priority, a due date. `createItem` asks `work_item:edit`
+ * as well whenever any of them is set, and refuses an assignee who is not an
+ * ACTIVE member.
+ * Strict: a body with a key this shape does not name is refused, not half-read.
+ */
+const CreateTask = z
+  .object({
+    projectId: uuid,
+    projectKey: keyShape,
+    title: z.string().min(1).max(MAX_TITLE_LENGTH),
+    visibility: visibilityShape,
+    description: z.string().max(DESCRIPTION_TEXT_CHARS),
+    assigneeMemberId: uuid.nullable(),
+    priority: z.enum(PRIORITIES),
+    targetDate: z.string().refine((s) => isIsoDate(s)).nullable(),
+  })
+  .strict();
+
+export async function createTaskAction(input: z.input<typeof CreateTask>): Promise<ActionResult<ItemCreated>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.backlog");
+  // The title trimmed and CAPPED before the shape is judged — the create
+  // row's rule: a long title is a title to cut, not a refusal.
+  const title =
+    typeof input === "object" && input !== null && typeof input.title === "string"
+      ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
+      : undefined;
+  const parsed = CreateTask.safeParse(typeof input === "object" && input !== null ? { ...input, title } : input);
+  if (!parsed.success) return { ok: false, message: t("invalidTitle") };
+  const d = parsed.data;
+  // The text goes to the service AS TEXT: it becomes a document there, only
+  // after the service has asked who may set it (both reviews' LOW).
+  const r = await runAction(backlogPath(d.projectKey), () => {
+    return createItem(ctx, {
+      projectId: d.projectId,
+      title: d.title,
+      visibility: d.visibility,
+      fields: {
+        ...(d.description.trim() !== "" ? { descriptionText: d.description } : {}),
+        ...(d.assigneeMemberId ? { assigneeMemberId: d.assigneeMemberId } : {}),
+        ...(d.priority !== "NONE" ? { priority: d.priority } : {}),
+        ...(d.targetDate ? { targetDate: dateColumn(d.targetDate) } : {}),
+      },
+    });
+  });
+  if (r.ok) revalidate(d.projectKey);
+  return r;
 }
 
 export async function renameItemAction(
@@ -599,6 +660,52 @@ export async function deleteItemAction(itemId: string, projectKey: string): Prom
     return { message: t("deletedToast"), deletedAt: deletedAt.toISOString() };
   });
   if (r.ok) revalidate(key.data);
+  return r;
+}
+
+/* -------------------------------------------------------------- *
+ * COPY A TASK (slice 129, founder decision C106 (a), (b)): the Copy
+ * dialog's read and its verb. `Target` names the task and the surface the
+ * dialog was opened on (the step-up's return address); the service
+ * decides everything else — create + edit, both projects in scope, the
+ * target open, the bounds.
+ * -------------------------------------------------------------- */
+
+const CopyTask = Target.extend({
+  projectId: uuid,
+  title: z.string().min(1).max(MAX_TITLE_LENGTH),
+  // Each part at most once; an unknown one is refused, never ignored.
+  bring: z.array(z.enum(COPY_PARTS)).max(COPY_PARTS.length).refine((a) => new Set(a).size === a.length),
+}).strict();
+
+export async function copySourceAction(input: z.input<typeof Target>): Promise<ActionResult<CopySource>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.copy");
+  const parsed = Target.safeParse(input);
+  if (!parsed.success) return { ok: false, message: t("failed") };
+  const { itemId, projectKey, itemNumber, surface } = parsed.data;
+  return runAction(itemReturnTo(surface, projectKey, itemNumber), () => readCopySource(ctx, itemId));
+}
+
+export async function copyItemAction(input: z.input<typeof CopyTask>): Promise<ActionResult<CopyDone>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.copy");
+  // The title trimmed and capped before the shape is judged (the create's rule).
+  const title =
+    typeof input === "object" && input !== null && typeof input.title === "string"
+      ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
+      : undefined;
+  const parsed = CopyTask.safeParse(typeof input === "object" && input !== null ? { ...input, title } : input);
+  if (!parsed.success) return { ok: false, message: t("failed") };
+  const { itemId, projectKey, itemNumber, surface, projectId, bring } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), () =>
+    copyItem(ctx, itemId, { projectId, title: parsed.data.title, bring: new Set(bring) }),
+  );
+  if (r.ok) {
+    // The source's history gained a row; the chosen project gained tasks.
+    revalidate(projectKey);
+    if (r.value.projectKey !== projectKey) revalidate(r.value.projectKey);
+  }
   return r;
 }
 

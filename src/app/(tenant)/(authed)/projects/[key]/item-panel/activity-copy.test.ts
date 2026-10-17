@@ -59,6 +59,21 @@ describe("activitySentence", () => {
     expect(activitySentence(row({ field: "repeatCopied", newValue: "x" }), look)).toEqual({ key: "fieldChanged", field: "repeatCopied" });
   });
 
+  it("a member's copy (slice 129): each end names the other by the KEY the read resolved, else 'another project'", () => {
+    const id = "0199c3a2-0000-7000-8000-000000000001";
+    expect(activitySentence(row({ field: "copiedFrom", oldRef: id, oldRefName: "ACME-12" }), look)).toEqual({ key: "copiedFrom", task: "ACME-12" });
+    expect(activitySentence(row({ field: "copiedTo", newRef: id, newRefName: "ACME-7" }), look)).toEqual({ key: "copiedTo", task: "ACME-7" });
+    // Not resolved (another project), or anything the read could not have
+    // produced: "another project" — never a key the reader was not given.
+    for (const name of [null, "12", "acme-12", "ACME-0", "ACME-12 and more", ""]) {
+      expect(activitySentence(row({ field: "copiedFrom", oldRef: id, oldRefName: name }), look)).toEqual({ key: "copiedFromElsewhere" });
+      expect(activitySentence(row({ field: "copiedTo", newRef: id, newRefName: name }), look)).toEqual({ key: "copiedToElsewhere" });
+    }
+    // No ref at all: no sentence this build knows.
+    expect(activitySentence(row({ field: "copiedFrom", oldValue: "ACME-12" }), look)).toEqual({ key: "fieldChanged", field: "copiedFrom" });
+    expect(activitySentence(row({ field: "copiedTo" }), look)).toEqual({ key: "fieldChanged", field: "copiedTo" });
+  });
+
   it("the two rows without values", () => {
     expect(activitySentence(row({ field: "created" }), look)).toEqual({ key: "created" });
     expect(activitySentence(row({ field: "description" }), look)).toEqual({ key: "descriptionEdited" });

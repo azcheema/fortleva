@@ -137,12 +137,18 @@ export async function readItemRepeat(
  * description) — a left-out parent takes its children with it, so the rule
  * needs them all. A deleted row is filtered in SQL, which loses nothing: a
  * task with a live subtask cannot be deleted (`HAS_CHILDREN`).
+ *
+ * `includeSeries` (slice 129): a member's COPY of a task takes a subtask that
+ * is itself part of a repeat series too — as a plain task, since the copy
+ * never repeats — because the member ticked "Subtasks" and a missing one
+ * would be a silent drop. The repeat copier leaves it out (below).
  */
 export async function copyableSubtree(
   tx: TenantDb,
   tenantId: string,
   holder: { readonly id: string; readonly depth: number },
   limit: number,
+  opts: { readonly includeSeries?: boolean } = {},
 ): Promise<{ id: string; parentId: string | null; depth: number }[]> {
   const rows = await tx.workItem.findMany({
     where: { tenantId, deletedAt: null, OR: [{ parentId: holder.id }, { parent: { parentId: holder.id } }] },
@@ -154,7 +160,7 @@ export async function copyableSubtree(
   // repeating one afterwards would otherwise bring its own copies along,
   // more each period). Left out as a left-out parent is: with its children.
   const inSeries = new Set(
-    rows.length === 0
+    rows.length === 0 || opts.includeSeries
       ? []
       : (
           await tx.workItemRepeatItem.findMany({

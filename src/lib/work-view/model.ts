@@ -510,6 +510,14 @@ export const MAX_BULK_ITEMS = 50;
 export const MAX_TITLE_LENGTH = 400;
 
 /**
+ * The "New task" form's description box (slice 129): the description gate's
+ * own text bound (`DESCRIPTION_TEXT_CHARS`, pinned equal by
+ * `src/modules/work/description-text.test.ts`) — repeated HERE because that module carries the whole
+ * editor schema, which the shell's dialog must not pull into every page.
+ */
+export const MAX_DESCRIPTION_TEXT = 100_000;
+
+/**
  * A label name's bound — a chip, not a sentence. It lives HERE, beside
  * `MAX_TITLE_LENGTH`, for the same reason: the picker's typed row must
  * honour it before the server does, `@/modules/work` reaches the

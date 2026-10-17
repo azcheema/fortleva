@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NO_FILTERS } from "./model";
-import { filtersOf, listHrefOf, peekHrefOf, withItemParam, workViewHref, workViewParsers } from "./params";
+import { copyLandingHref, filtersOf, listHrefOf, peekHrefOf, withItemParam, workViewHref, workViewParsers } from "./params";
 
 /**
  * The URL contract, pinned as a unit so a regression costs seconds
@@ -87,6 +87,19 @@ describe("workViewHref — one '?' per URL, always", () => {
     expect(withItemParam(`${base}?state=a&state=b&item=ACME-3`, "ACME-9")).toBe(`${base}?state=a&state=b&item=ACME-9`);
     // No query at all: the bare path plus the item — one '?'.
     expect(withItemParam(base, "ACME-9")).toBe(`${base}?item=ACME-9`);
+  });
+
+  it("copyLandingHref (slice 129): a copy in the same project opens as the surface's peek; in another, or from a page, its own page", () => {
+    expect(copyLandingHref("backlog", `${base}?group=epic&item=ACME-3`, "ACME", { projectKey: "ACME", number: 9 })).toBe(
+      `${base}?group=epic&item=ACME-9`,
+    );
+    expect(copyLandingHref("board", "/projects/ACME/board?", "ACME", { projectKey: "ACME", number: 9 })).toBe(
+      "/projects/ACME/board?item=ACME-9",
+    );
+    expect(copyLandingHref("backlog", base, "ACME", { projectKey: "WEB", number: 4 })).toBe("/projects/WEB/items/4");
+    expect(copyLandingHref("page", "/projects/ACME/items/3", "ACME", { projectKey: "ACME", number: 9 })).toBe(
+      "/projects/ACME/items/9",
+    );
   });
 
   it("a repeated param survives as a repeat, and a patch replaces rather than appends", () => {

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { TabNav } from "@/components/tab-nav";
 
 import { loadProject } from "./data";
+import { NewTaskButton } from "./new-task-button";
 
 export async function generateMetadata({
   params,
@@ -68,7 +69,7 @@ export default async function ProjectLayout({
   // boundary (measured, 2026-09-21). Time's check is left as it was:
   // changing it is a behaviour change for the `time` module and belongs
   // in a slice that can test it.
-  const [canViewTime, canManagePortal] = await withTenant(
+  const [canViewTime, canManagePortal, canCreateTask] = await withTenant(
     membership.tenantId,
     { type: "member", id: membership.memberId },
     // SEQUENTIAL, NOT `Promise.all`, and the first cut of this got it
@@ -93,7 +94,12 @@ export default async function ProjectLayout({
       const portal = project.caps.managePortal
         ? await hasAccess(tx, membership.tenantId, actor, "project:manage_portal")
         : false;
-      return [time, portal] as const;
+      // Slice 129 (C106 (c)): the header's New task — all four gates, as
+      // the shell's `C` is offered; an archived project takes no new task
+      // (the dialog's list leaves it out).
+      const newTask =
+        project.status !== "ARCHIVED" ? await hasAccess(tx, membership.tenantId, actor, "work_item:create") : false;
+      return [time, portal, newTask] as const;
     },
   );
 
@@ -208,13 +214,19 @@ export default async function ProjectLayout({
           </>
         }
         actions={
-          project.productionUrl ? (
-            <Button asChild variant="outline" size="sm">
-              <a href={project.productionUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLinkIcon />
-                {t("overview.openProduction")}
-              </a>
-            </Button>
+          project.productionUrl || canCreateTask ? (
+            <>
+              {project.productionUrl ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={project.productionUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLinkIcon />
+                    {t("overview.openProduction")}
+                  </a>
+                </Button>
+              ) : null}
+              {/* Slice 129 (C106 (c)): the shell's create dialog, this project chosen. */}
+              {canCreateTask ? <NewTaskButton /> : null}
+            </>
           ) : null
         }
       />

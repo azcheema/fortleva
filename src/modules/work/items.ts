@@ -8,7 +8,7 @@ import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
-import { readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
+import { nameCopyRefs, readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
 import { readItemComments, type ItemComments } from "./comments";
 import { readItemLabels, readLabelsByItem, type ItemLabels, type LabelEntry } from "./labels";
 import { descriptionToken } from "./description-token";
@@ -20,9 +20,10 @@ import { readItemRepeat, type ItemRepeat } from "./repeat";
 import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, principalOf, transitionState, type WorkCtx } from "./states";
 import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
-import { childTypeOf, type StateSeedKey, type StatusValue } from "@/lib/enum-map";
+import { childTypeOf, type Priority, type StateSeedKey, type StatusValue } from "@/lib/enum-map";
 import { isRepeatRhythm, type RepeatRhythm } from "@/lib/repeat-rules";
 import { stateLabel } from "@/lib/state-label";
+import { descriptionFromText } from "./description-text";
 
 /**
  * WorkItem CRUD for the 2W core slice (title-only create, list, inline
@@ -474,6 +475,20 @@ async function activeMembers(tx: TenantDb, tenantId: string): Promise<{ id: stri
   return rows.map((m) => ({ id: m.id, name: m.user.name }));
 }
 
+/**
+ * The "New task" form's Person list (slice 129, C106 (c)) — `activeMembers`,
+ * the panel's own list, so the form offers the people the panel would.
+ * Asked of a member who may create AND edit: the form offers the field to
+ * no one else, and `createItem` asks both before it sets it.
+ */
+export async function listAssignableMembers(ctx: WorkCtx): Promise<{ id: string; name: string }[]> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:create");
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    return activeMembers(tx, ctx.tenantId);
+  });
+}
+
 /** The project's phases, as the `M` picker lists them (§6.5). */
 export type MilestoneStatus = StatusValue<"milestoneStatus">;
 
@@ -777,7 +792,7 @@ export async function getItemDetail(
     // owe a Phase-3 answer for the contact principal. If the read ever
     // does come back empty, the panel degrades to plain text rather
     // than rendering a picker with nothing in it.
-    const [attachmentCount, held, states, activity, subtasks] = await Promise.all([
+    const [attachmentCount, held, states, activityPage, subtasks] = await Promise.all([
       tx.document.count({
         where: {
           tenantId: ctx.tenantId,
@@ -841,6 +856,9 @@ export async function getItemDetail(
         ? Promise.resolve({ rows: [], done: 0, total: 0 } satisfies ItemSubtasks)
         : readItemSubtasks(tx, ctx.tenantId, row!.id),
     ]);
+    // A copy's other end, named only within this project (slice 129) — in
+    // SEQUENCE after the batch, never a leg of it (the one-connection trap).
+    const activity = await nameCopyRefs(tx, ctx.tenantId, projectId, activityPage);
     const canEdit = held.has("work_item:edit");
     // The `A` picker's rows — read only for a member who can edit: a
     // viewer's panel renders the assignee as text and never lists anyone.
@@ -1036,7 +1054,27 @@ export type ItemCreated = {
  * No comment is raised (follow-task.ts: creation is not a raise), and
  * the portal switch is not consulted — visibility is the row's flag,
  * the switch is the project's (`changeItemVisibility`'s rule).
+ *
+ * FIELDS AT BIRTH (slice 129, founder decision C106 (c) — the "New task"
+ * form): a description as PLAIN TEXT, a member assignee, a priority and a
+ * due date. Setting any of them is editing, so it asks `work_item:edit` as
+ * well (the repeat setting's edit + create precedent); the assignee must be
+ * an ACTIVE member — `assignItem`'s rule, and the panel's list. The text
+ * becomes a document (`descriptionFromText`) only AFTER both codes were
+ * asked — never parsed for a caller who may not set it (both reviews' LOW:
+ * the standing "before any gate" trap). Born with them: no history row per
+ * field but the assignee's (the copier's precedent), the assignee is told,
+ * and the audit row names the fields set — never their values.
  */
+export type ItemBirthFields = {
+  /** Plain text, made a description here (`descriptionFromText`); blank is no description. */
+  readonly descriptionText?: string;
+  readonly assigneeMemberId?: string;
+  readonly priority?: Priority;
+  /** A date column's UTC midnight (`dateColumn`). */
+  readonly targetDate?: Date;
+};
+
 export async function createItem(
   ctx: WorkCtx,
   input: {
@@ -1046,6 +1084,8 @@ export async function createItem(
     stateId?: string;
     /** What the member's surface showed; omitted = inherit (see above). */
     visibility?: "INTERNAL" | "CLIENT_VISIBLE";
+    /** Slice 129: what the "New task" form set (see above). Omitted = a title-only create. */
+    fields?: ItemBirthFields;
   },
 ): Promise<ItemCreated> {
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => guarded(async () => {
@@ -1059,6 +1099,28 @@ export async function createItem(
     // parent) and never asks for the code.
     if (!input.parentId && input.visibility === "CLIENT_VISIBLE") {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:change_visibility");
+    }
+    // Slice 129: the fields set at birth — decided before any lock, as the
+    // share is. A NONE priority or an empty description is no field at all.
+    const fields = input.fields ?? {};
+    const describing = (fields.descriptionText ?? "").trim() !== "";
+    const priority = fields.priority && fields.priority !== "NONE" ? fields.priority : null;
+    const asked = [
+      ...(describing ? ["description"] : []),
+      ...(fields.assigneeMemberId ? ["assignee"] : []),
+      ...(priority ? ["priority"] : []),
+      ...(fields.targetDate ? ["targetDate"] : []),
+    ];
+    if (asked.length > 0) await requireAccess(tx, ctx.tenantId, ctx.actor, "work_item:edit");
+    // Only now, with both codes asked: the gate refuses a text too long.
+    const description = describing ? descriptionFromText(fields.descriptionText!) : null;
+    const fieldNames = description === null ? asked.filter((n) => n !== "description") : asked;
+    if (fields.assigneeMemberId) {
+      const assignee = await tx.member.findFirst({
+        where: { tenantId: ctx.tenantId, id: fields.assigneeMemberId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      if (!assignee) deny("NOT_FOUND");
     }
     const project = await tx.project.findFirst({
       where: { tenantId: ctx.tenantId, id: input.projectId },
@@ -1148,10 +1210,27 @@ export async function createItem(
         rank,
         visibility,
         createdByMemberId: ctx.actor.memberId,
+        ...(description
+          ? {
+              description: description.doc as object,
+              descriptionText: description.text,
+              checklistTotal: description.checklistTotal,
+              checklistDone: description.checklistDone,
+            }
+          : {}),
+        ...(fields.assigneeMemberId ? { assigneeMemberId: fields.assigneeMemberId } : {}),
+        ...(priority ? { priority } : {}),
+        ...(fields.targetDate ? { targetDate: fields.targetDate } : {}),
       },
+      // INLINE, and never omitted: a select-less create returns the whole
+      // row, the description it was just given included.
+      select: { id: true },
     });
     const created = await tx.workItem.findFirst({ where: { tenantId: ctx.tenantId, id }, omit: { description: true, descriptionText: true } });
     await writeActivity(tx, ctx, created!, { field: "created", forceInternal: true });
+    if (fields.assigneeMemberId) {
+      await writeActivity(tx, ctx, created!, { field: "assignee", oldRef: null, newRef: fields.assigneeMemberId, forceInternal: true });
+    }
     await record(tx, {
       action: "work_item.created",
       targetType: "WorkItem",
@@ -1160,9 +1239,19 @@ export async function createItem(
       // child's trail must not claim a share that did not happen. On
       // EVERY create — an Employee's subtask born shared under a shared
       // parent had never recorded that it was born shared at all.
-      metadata: { number, projectId: input.projectId, type, visibility: created!.visibility },
+      metadata: {
+        number,
+        projectId: input.projectId,
+        type,
+        visibility: created!.visibility,
+        ...(fieldNames.length > 0 ? { fields: fieldNames } : {}),
+      },
     });
     if (targetState) await transitionState(tx, ctx, created!, targetState, undefined, { birth: true });
+    if (fields.assigneeMemberId) {
+      // `emit` drops the actor: assigning oneself tells nobody.
+      await notifyItemMembers(tx, ctx, created!, "work_item.assigned", new Map([[fields.assigneeMemberId, "ASSIGNEE"]]), "assigned");
+    }
     return { id, number, visibility: created!.visibility, portalEnabled: created!.portalEnabled };
   }));
 }

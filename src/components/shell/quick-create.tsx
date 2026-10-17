@@ -6,10 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  quickCreateProjectsAction,
+  quickCreateOptionsAction,
+  type QuickCreateForm,
   type QuickCreateProject,
 } from "@/app/(tenant)/(authed)/projects/actions";
-import { createItemAnywhereAction } from "@/app/(tenant)/(authed)/projects/[key]/backlog/actions";
+import { createTaskAction } from "@/app/(tenant)/(authed)/projects/[key]/backlog/actions";
 import { CreateVisibilitySelect, EntityChip, VisibilityBadge } from "@/components/semantic";
 import { KeyboardHint } from "@/components/semantic/keyboard-hint";
 import { Button } from "@/components/ui/button";
@@ -30,10 +31,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useFocusReturn } from "@/components/ui/use-focus-return";
+import { DraftAssigneePicker, DraftDuePicker, DraftPriorityPicker } from "@/components/work-view/draft-pickers";
 import { useRootCreatePick } from "@/components/work-view/use-create-visibility";
+import type { Priority } from "@/lib/enum-map";
 import { matchesQuery } from "@/lib/text-match";
-import { MAX_TITLE_LENGTH, rootCreateVisibility } from "@/lib/work-view";
+import { MAX_DESCRIPTION_TEXT, MAX_TITLE_LENGTH, rootCreateVisibility } from "@/lib/work-view";
 
 import { useScopeKeys } from "./use-hotkeys";
 
@@ -96,7 +100,26 @@ import { useScopeKeys } from "./use-hotkeys";
  * (REQUIRED, the same read) is `work_item:change_visibility`: whether
  * "Client can see" is offered — and `createItem` refuses the share
  * without it regardless (C38).
+ *
+ * THE FULLER FORM AND ITS BUTTON (slice 129, founder decision C106 (c)): a
+ * project page's "New task" button opens THIS dialog (`openQuickCreate`, a
+ * window event — one create dialog, not two), and the dialog now carries,
+ * under the title, a description box and the Person, Due date and Priority
+ * pickers — for a member who may set them (`work_item:edit` too; the
+ * server's `form` answer is null otherwise, and the dialog stays
+ * title-only) — plus a visible "Create task" button that creates and
+ * closes. Enter's "start the next" starts it fresh: the description and the
+ * three picks go back to empty, as the visibility pick does (C39); ⌘⇧Enter
+ * keeps the picks (rule 2's "create another with the same properties"),
+ * never the description, which is one task's own words.
  */
+const OPEN_EVENT = "flv:quick-create";
+
+/** Open the create dialog — a project page's "New task" button. A plain function, never a hook's closure (the React Compiler's module-binding trap does not apply: nothing here is a module `let`). */
+export function openQuickCreate(): void {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
+
 export function QuickCreate({ canCreateTask, canShareTask }: { canCreateTask: boolean; canShareTask: boolean }) {
   const t = useTranslations("shell.quickCreate");
   const router = useRouter();
@@ -127,6 +150,15 @@ export function QuickCreate({ canCreateTask, canShareTask }: { canCreateTask: bo
       run: () => setOpen(true),
     },
   ]);
+
+  // The project page's "New task" button (slice 129). The button is drawn
+  // only for a member who may create there; the guard is the key's own.
+  useEffect(() => {
+    if (!canCreateTask) return;
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+  }, [canCreateTask]);
 
   // While it is open this dialog owns the keyboard, the stop confirm's
   // reason: single keys are inert in the title field and in cmdk's
@@ -204,8 +236,15 @@ function QuickCreateBody({
   const tVis = useTranslations("visibility.create");
   const focusReturn = useFocusReturn();
   const [projects, setProjects] = useState<QuickCreateProject[]>([]);
+  // The fuller form's half (slice 129) — null for a member who may not set
+  // the fields, and then the dialog is the title-only one it always was.
+  const [form, setForm] = useState<QuickCreateForm | null>(null);
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignee, setAssignee] = useState<string | null>(null);
+  const [due, setDue] = useState<string | null>(null);
+  const [priority, setPriority] = useState<Priority>("NONE");
   const [pending, setPending] = useState(false);
   const [query, setQuery] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
@@ -225,15 +264,16 @@ function QuickCreateBody({
   // a member who presses Escape while it is in flight has unmounted this.
   useEffect(() => {
     let alive = true;
-    void quickCreateProjectsAction().then((r) => {
+    void quickCreateOptionsAction().then((r) => {
       if (!alive) return;
       if (!r.ok) {
         toast.error(r.message);
         onDone();
         return;
       }
-      setProjects(r.value);
-      const inRoute = routeKey ? r.value.find((p) => p.key === routeKey) : undefined;
+      setProjects(r.value.projects);
+      setForm(r.value.form);
+      const inRoute = routeKey ? r.value.projects.find((p) => p.key === routeKey) : undefined;
       setStage(inRoute ? { kind: "titling", project: inRoute } : { kind: "picking" });
     });
     return () => {
@@ -252,21 +292,39 @@ function QuickCreateBody({
     if (stage.kind === "titling") titleRef.current?.focus();
   }, [stage.kind]);
 
-  const create = async (then: "again" | "keep" | "open") => {
+  // `close` is the Create task button's (slice 129): create, say so, and
+  // close — focus goes back to whatever opened the dialog.
+  const create = async (then: "again" | "keep" | "open" | "close") => {
     if (stage.kind !== "titling" || pending) return;
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      // The button pressed over an empty title: the field says what is missing.
+      titleRef.current?.focus();
+      return;
+    }
     setPending(true);
-    // What this field SHOWS now — the value the answer's reset compares
-    // against (`afterCreate`).
+    // What this form SHOWS now — the values the answer's resets compare
+    // against (`afterCreate`, and the three picks below).
     const sent = send;
-    const r = await createItemAnywhereAction(stage.project.id, stage.project.key, trimmed, sent).catch(
-      () => ({ ok: false as const, message: t("failed") }),
-    );
+    const sentDescription = form ? description : "";
+    const sentAssignee = form ? assignee : null;
+    const sentDue = form ? due : null;
+    const sentPriority: Priority = form ? priority : "NONE";
+    const r = await createTaskAction({
+      projectId: stage.project.id,
+      projectKey: stage.project.key,
+      title: trimmed,
+      visibility: sent,
+      description: sentDescription,
+      assigneeMemberId: sentAssignee,
+      priority: sentPriority,
+      targetDate: sentDue,
+    }).catch(() => ({ ok: false as const, message: t("failed") }));
     setPending(false);
     if (!r.ok) {
       // An action failure must never look like a revert (standing trap):
-      // the typed title stays exactly where it is, and the toast says why.
+      // everything typed and picked stays exactly where it is, and the
+      // toast says why.
       toast.error(r.message);
       return;
     }
@@ -284,17 +342,31 @@ function QuickCreateBody({
           ? t("createdVisible", { key })
           : t("createdVisiblePortalOff", { key }),
     );
+    if (then === "close") {
+      onDone();
+      return;
+    }
     // C39: the next task starts private again — unless ⌘⇧Enter asked to
     // keep it, or the member changed the pick while this one was out.
     afterCreate(sent, then === "keep");
-    // Only the title that was SENT is cleared. The field stays enabled
-    // and focused through the round trip — a create that revalidates
-    // its page takes over two seconds to answer — so a member who has
-    // started the next one in the meantime must not have it erased by
-    // the last one landing (review).
+    // Only what was SENT is cleared. The fields stay enabled and focused
+    // through the round trip — a create that revalidates its page takes
+    // over two seconds to answer — so a member who has started the next
+    // one in the meantime must not have it erased by the last one
+    // landing (review). The description is one task's own words, so even
+    // ⌘⇧Enter starts the next without it; the three picks are kept by
+    // ⌘⇧Enter and otherwise go back to empty, as the visibility pick does.
     setTitle((current) => (current === trimmed ? "" : current));
+    setDescription((current) => (current === sentDescription ? "" : current));
+    if (then !== "keep") {
+      setAssignee((current) => (current === sentAssignee ? null : current));
+      setDue((current) => (current === sentDue ? null : current));
+      setPriority((current) => (current === sentPriority ? "NONE" : current));
+    }
     titleRef.current?.focus();
   };
+  // Whether ⌘⇧Enter would keep anything the next task would otherwise lose.
+  const picked = form !== null && (assignee !== null || due !== null || priority !== "NONE");
 
   const rows =
     query.trim() === ""
@@ -338,6 +410,34 @@ function QuickCreateBody({
               void create(e.metaKey || e.ctrlKey ? (e.shiftKey ? "keep" : "open") : "again");
             }}
           />
+          {form ? (
+            <>
+              {/* PLAIN TEXT, made a description on the server (slice 129):
+                  Enter is a new line here, and ⌘Enter / ⌘⇧Enter are the
+                  title's two — create and open, create the next keeping
+                  the picks. */}
+              <Textarea
+                value={description}
+                maxLength={MAX_DESCRIPTION_TEXT}
+                rows={3}
+                placeholder={t("descriptionPlaceholder")}
+                aria-label={t("descriptionLabel")}
+                data-testid="quick-create-description"
+                className="max-h-48 overflow-y-auto"
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+                  e.preventDefault();
+                  void create(e.shiftKey ? "keep" : "open");
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2" data-testid="quick-create-fields">
+                <DraftAssigneePicker members={form.members} value={assignee} onChange={setAssignee} />
+                <DraftDuePicker value={due} onChange={setDue} weekStart={form.weekStart} showIsoWeek={form.showIsoWeek} />
+                <DraftPriorityPicker value={priority} onChange={setPriority} />
+              </div>
+            </>
+          ) : null}
           {offered ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -369,7 +469,27 @@ function QuickCreateBody({
               <VisibilityBadge value="INTERNAL" size="sm" />
             </div>
           ) : null}
-          <DialogFooter className="items-center justify-between gap-2 sm:justify-between">
+          {/* Both verbs stated, in the glyph machinery rather than as
+              copy: `mod` renders ⌘ on a Mac and Ctrl everywhere else,
+              which a hard-coded "⌘Enter" in a message would not. Above
+              the footer since slice 129, which gave the footer its button. */}
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <KeyboardHint keys={["Enter"]} />
+              {t("enterHint")}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <KeyboardHint keys={["mod", "Enter"]} />
+              {t("openHint")}
+            </span>
+            {picked ? (
+              <span className="flex items-center gap-1.5">
+                <KeyboardHint keys={["mod", "Shift", "Enter"]} />
+                {t("keepFieldsHint")}
+              </span>
+            ) : null}
+          </span>
+          <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
             {/* The project is a property, so it stays changeable here —
                 the picker is one click away, not a close-and-navigate. */}
             {/* The visible chip IS the value; the sr-only clause says
@@ -377,7 +497,7 @@ function QuickCreateBody({
                 archived-filter chip uses. Without it the button's whole
                 accessible name was a project name, which reads as a
                 link to that project. */}
-            <Button variant="ghost" size="sm" onClick={() => setStage({ kind: "picking" })}>
+            <Button variant="ghost" size="sm" className="min-w-0" onClick={() => setStage({ kind: "picking" })}>
               <EntityChip
                 id={stage.project.id}
                 name={stage.project.name}
@@ -386,19 +506,10 @@ function QuickCreateBody({
               />
               <span className="sr-only">{t("changeProject")}</span>
             </Button>
-            {/* Both verbs stated, in the glyph machinery rather than as
-                copy: `mod` renders ⌘ on a Mac and Ctrl everywhere else,
-                which a hard-coded "⌘Enter" in a message would not. */}
-            <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <KeyboardHint keys={["Enter"]} />
-                {t("enterHint")}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <KeyboardHint keys={["mod", "Enter"]} />
-                {t("openHint")}
-              </span>
-            </span>
+            {/* The verb a pointer can see (slice 129): create and close. */}
+            <Button size="sm" className="shrink-0" data-testid="quick-create-submit" onClick={() => void create("close")}>
+              {t("submit")}
+            </Button>
           </DialogFooter>
         </>
       ) : (

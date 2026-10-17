@@ -319,7 +319,47 @@ async function resolveLabelNames(
   );
 }
 
-/** Which resolver a field's refs belong to — the one place the four ref-bearing fields are named. */
+/**
+ * A copy's other end (slice 129) as its KEY, on a page `readItemActivity`
+ * read — resolved only for a task in `projectId`, the project of the task
+ * whose history this is. The reader already reaches that project; a task in
+ * another project stays nameless (the sentence says "another project"), so
+ * a history never tells a reader of one project that another exists, nor
+ * its key (the security review's L-1). Named when the history is read, so a
+ * renamed key reads as it is now.
+ *
+ * Its OWN step, called by `getItemDetail` after its batch and never as a leg
+ * of one (the one-connection trap): a page without copy rows reads nothing.
+ */
+export async function nameCopyRefs(
+  tx: TenantDb,
+  tenantId: string,
+  projectId: string,
+  page: ItemActivityPage,
+): Promise<ItemActivityPage> {
+  const ids = new Set<string>();
+  for (const r of page.rows) {
+    if (r.field === "copiedFrom" && r.oldRef) ids.add(r.oldRef);
+    if (r.field === "copiedTo" && r.newRef) ids.add(r.newRef);
+  }
+  if (ids.size === 0) return page;
+  const key = nameLookup(
+    (
+      await tx.workItem.findMany({
+        where: { tenantId, projectId, id: { in: [...ids] } },
+        select: { id: true, number: true, project: { select: { key: true } } },
+      })
+    ).map((r) => ({ id: r.id, name: `${r.project.key}-${r.number}` })),
+  );
+  return {
+    ...page,
+    rows: page.rows.map((r) =>
+      r.field === "copiedFrom" ? { ...r, oldRefName: key(r.oldRef) } : r.field === "copiedTo" ? { ...r, newRefName: key(r.newRef) } : r,
+    ),
+  };
+}
+
+/** Which resolver a field's refs belong to — the one place the ref-bearing fields are named. */
 const refName = (
   field: string,
   ref: string | null,
@@ -452,6 +492,10 @@ export async function readItemActivity(
     resolveMilestoneNames(tx, tenantId, clientId, milestoneIds),
     resolveLabelNames(tx, tenantId, labelIds),
   ]);
+  // A copy's other end (slice 129) is NOT named here: this function is one
+  // leg of `getItemDetail`'s batch, and a new read inside a leg is a new
+  // statement on the batch's one connection (the standing trap; the re-check
+  // review's LOW). `nameCopyRefs` names them after that batch, in sequence.
   const by = { member: names.member, contact: names.contact, milestone, label };
 
   return {

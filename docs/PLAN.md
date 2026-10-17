@@ -10,7 +10,49 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 128 IS BUILT — A CALENDAR OF TASKS (founder decision C105: the pick on "suggest me something else", over forwarding an email to make a task, due dates in Google/Apple Calendar, and saved filters; then four answers, all WITH the recommendation). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, is still the one I recommend; Phase 7 stays postponed).** `0640d72`, **GREEN first run — CI 39032048792** (unit 202 / 3 074 / 1 skipped, test:db 122 / 2 001, harness 303 passed / 5 skipped / **1 flaky** in 35.6 min). The flaky one is `time.spec.ts:403` (`T` on a focused backlog row … focus coming back). It failed its focus assertion once and passed on retry. This slice did not touch that surface (the backlog row is unchanged here), and the three runs before it were clean; it is recorded as a flake, beside the same file's timer-toast flake recorded earlier.
+**STATE, 2026-10-17 (latest): SLICE 129 IS BUILT — COPY A TASK, AND A FULLER "NEW TASK" (founder decision C106: the founder's pick on "suggest me more features" — "Copy the task" and "an easier way to create a task in a project"; then three answers: (a) TICK WHAT TO COPY EACH TIME and (b) I PICK THE PROJECT, both AGAINST the recommendation, and (c) A NEW TASK BUTTON + FULLER FORM, WITH it. A copy always starts hidden from the client — mine, stated, theirs to overturn). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, steps A.1/A.2 are the founder's and involve waiting; Phase 7 stays postponed).** CI: see the line under this entry once read.
+
+**What it is.**
+- **New task.** Every project page's header has a **New task** button (`work_item:create`, on all four gates; not on an archived project). It opens the shell's ONE create dialog — the same one `C` opens — with the project taken from the route (`openQuickCreate`, a window event).
+- **The fuller form.** For a member who may also edit, the dialog gains:
+  - a plain-text **Description** box, made a document on the SERVER after the permission checks (`descriptionFromText` = the import's `textBlocks` + `normalizeDescription`);
+  - **Person**, **Due date** and **Priority** — the panel's `PropertyPicker`s holding a draft value (`draft-pickers.tsx`);
+  - a visible **Create task** button, which creates and closes.
+
+  Enter starts the next fresh, ⌘⇧Enter keeps the picks, ⌘Enter opens. `createItem` takes `fields`, asks `work_item:edit` when any is set, and audits their NAMES (`fields`).
+- **Copy….** In the task panel's header (peek and page), the backlog row menu and the board card menu (create + edit).
+  - **The dialog:** the title (editable); the project (this one, or "Choose a project…" when it is archived); and a checkbox per part the task HAS — description, subtasks, labels, assignee, dates — all ticked but the dates.
+  - **`copyItem` (`src/modules/work/copy.ts`):**
+    - who: view + create + edit, both projects in scope, the target not archived;
+    - always INTERNAL, written out;
+    - lands at the bottom, under the same parent in the same project, top-level elsewhere (a subtask becomes a task, a request becomes a task);
+    - subtasks by the template rule (`copyableSubtree`, now `includeSeries`), bounded at 100 tasks and 2 MiB of descriptions — REFUSED past either (`COPY_TOO_BIG`), never cut short;
+    - labels of another project and people who cannot work there are left off and counted;
+    - every row audited `work_item.created` as the member (`copiedFromId`, `brought` / `copyOf`);
+    - history `copiedFrom` / `copiedTo` as REFS, named by key only within one project (`nameCopyRefs`, after `getItemDetail`'s batch), else "another project".
+  - **Where the copy opens:** the same surface's peek in the same project, its own page in another (`copyLandingHref`).
+- No migration, no new permission code, no new audit action. New domain codes `COPY_TOO_BIG` and `COPY_BUSY`.
+
+**Reviews** (fresh agents, read-only; dispositions in `docs/research/2026-10-17-slice-129-copy-and-new-task-design.md` §4):
+- **Security:** no HIGH or MEDIUM; 4 LOW and 2 NIT. Taken:
+  - another project's key in a history row — now refs, named within one project only;
+  - the dialog's read asking no `work_item:view`;
+  - the description parsed before any gate;
+  - the opposite-copies deadlock claim corrected (a retry, never a hang);
+  - unlocked subtree reads re-filtered and weighed.
+
+  Kept, stated in AUTHZ: the form's person is ACTIVE-only — `assignItem`'s rule and the panel's list.
+- **Code:** no HIGH or MEDIUM; 8 LOW and 7 NIT. All taken but two NITs (one message for every parse failure; three transactions per dialog open).
+- **A narrow re-check of the fixes:** one LOW, taken — the copy-key lookup had been put inside `getItemDetail`'s `Promise.all` leg; it is now its own step after the batch. Three NITs, taken. The rounds converged.
+
+**Gates:**
+- typecheck 0 · ESLint 0;
+- unit 203 / 3 081 / 1 skipped;
+- `copy.dbtest.ts` (14) + `work` / `repeat` / `comments` dbtests against dev;
+- `pnpm build` 0;
+- e2e `copy-and-new-task.spec.ts` 2/2, plus `quick-create.spec.ts` and `create-visibility.spec.ts` (10/10 on port 3457; the Naxdor marketing site holds 3000 on this machine). The last local e2e predates the re-check's small fixes; CI runs it on the committed tree.
+
+**STATE, 2026-10-17: SLICE 128 IS BUILT — A CALENDAR OF TASKS (founder decision C105: the pick on "suggest me something else", over forwarding an email to make a task, due dates in Google/Apple Calendar, and saved filters; then four answers, all WITH the recommendation). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, is still the one I recommend; Phase 7 stays postponed).** `0640d72`, **GREEN first run — CI 39032048792** (unit 202 / 3 074 / 1 skipped, test:db 122 / 2 001, harness 303 passed / 5 skipped / **1 flaky** in 35.6 min). The flaky one is `time.spec.ts:403` (`T` on a focused backlog row … focus coming back). It failed its focus assertion once and passed on retry. This slice did not touch that surface (the backlog row is unchanged here), and the three runs before it were clean; it is recorded as a flake, beside the same file's timer-toast flake recorded earlier.
 
 **What it is.** `/calendar` is a new rail entry after Projects (`work_item:view`; the page also asks `project:view`; no `G` key; in More on a phone).
 - **What it shows:** every task with a due date in the projects the member reaches — not deleted or archived, not Cancelled or in Triage, in a project not archived. Done tasks are struck through; open overdue ones are in the danger tone.

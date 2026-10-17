@@ -29,6 +29,7 @@ import type { TimerPillState } from "../../../time/actions";
 import { ActivitySection } from "./activity-section";
 import { AssigneeField } from "./assignee-field";
 import { CommentsSection } from "./comments-section";
+import { CopyTaskButton } from "./copy-button";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
@@ -212,6 +213,12 @@ export async function ItemPanel({
   // An archived task takes no new time, so it gets no control — and no
   // item-scope `T`, which leaves the global one (stop / go to /time) live.
   const timerControl = timer && !item.archivedAt ? <TimerControl key={item.id} itemId={item.id} initial={timer} /> : null;
+  // Slice 129 (C106): copy this task, here or into another project — a
+  // member who may create and edit tasks.
+  const copyButton =
+    canCreate && canEdit ? (
+      <CopyTaskButton itemId={item.id} itemNumber={item.number} projectKey={projectKey} surface={surface} returnTo={returnTo} />
+    ) : null;
   const fullPageLink =
     variant === "peek" ? (
       <Button asChild variant="ghost" size="sm" className="ms-auto">
@@ -227,10 +234,11 @@ export async function ItemPanel({
       <span className="num-id text-xs text-muted-foreground">{itemKey}</span>
       {title}
       {variant === "peek" ? <SheetDescription className="sr-only">{t("sheetDescription")}</SheetDescription> : null}
-      {archivedNote || timerControl || fullPageLink ? (
+      {archivedNote || timerControl || copyButton || fullPageLink ? (
         <div className="flex flex-wrap items-center gap-2">
           {archivedNote}
           {timerControl}
+          {copyButton}
           {fullPageLink}
         </div>
       ) : null}

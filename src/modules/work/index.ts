@@ -13,6 +13,7 @@ export {
   createItem,
   deleteItem,
   getItemDetail,
+  listAssignableMembers,
   listItems,
   projectWorkVersion,
   resolveItemDetail,
@@ -24,6 +25,7 @@ export {
   updateItemFields,
   type AssignmentCommitted,
   type ContactAssignmentCommitted,
+  type ItemBirthFields,
   type ItemCreated,
   type ItemDetail,
   type ItemDetailCaps,
@@ -127,6 +129,15 @@ export { updateItemDescription, type DescriptionSaved } from "./description";
 // shape. The copier (`repeat-copies.ts`) stays off the barrel: only the jobs
 // route and the harness run it.
 export { setItemRepeat, type ItemRepeat, type RepeatCommitted } from "./repeat";
+// Slice 129 (C106) — copying a task.
+export {
+  COPY_PARTS,
+  copyItem,
+  readCopySource,
+  type CopyDone,
+  type CopyPart,
+  type CopySource,
+} from "./copy";
 // Slice 128 — the calendar of tasks (C105): its one read.
 export { readCalendar, type CalendarCopy, type CalendarEntry, type CalendarRead } from "./calendar";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";

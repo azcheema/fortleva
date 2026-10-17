@@ -91,6 +91,10 @@ export type ActivitySentence =
   | { key: "repeatStopped" }
   | { key: "repeatedFrom"; task: string }
   | { key: "repeatCopied"; task: string }
+  | { key: "copiedFrom"; task: string }
+  | { key: "copiedTo"; task: string }
+  | { key: "copiedFromElsewhere" }
+  | { key: "copiedToElsewhere" }
   | { key: "fieldChanged"; field: string };
 
 export type ActivityRow = Pick<
@@ -122,6 +126,13 @@ const taskNumber = (v: string | null): number | null => {
   const n = Number(v);
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 };
+
+/**
+ * A task KEY as the read resolves a copy's ref (activity.ts, slice 129:
+ * `KEY-N`, only for a task in the same project). Nothing else is one.
+ */
+const TASK_KEY_RE = /^[A-Z][A-Z0-9]{0,19}-[1-9]\d{0,9}$/;
+const taskKey = (v: string | null): string | null => (v !== null && TASK_KEY_RE.test(v) ? v : null);
 
 export function activitySentence(row: ActivityRow, look: ActivityLookups): ActivitySentence {
   const fallback: ActivitySentence = { key: "fieldChanged", field: row.field };
@@ -255,6 +266,20 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
     case "repeatCopied": {
       const n = taskNumber(row.newValue);
       return n === null ? fallback : { key: "repeatCopied", task: look.task(n) };
+    }
+    // A member's copy (slice 129): on the copy, the task it was copied from;
+    // on that task, the copy — each a REF, named by its key when the read
+    // could resolve it (the same project), and "another project" when not:
+    // a reader of this project never learns another project's key here.
+    case "copiedFrom": {
+      if (!row.oldRef) return fallback;
+      const k = taskKey(row.oldRefName);
+      return k === null ? { key: "copiedFromElsewhere" } : { key: "copiedFrom", task: k };
+    }
+    case "copiedTo": {
+      if (!row.newRef) return fallback;
+      const k = taskKey(row.newRefName);
+      return k === null ? { key: "copiedToElsewhere" } : { key: "copiedTo", task: k };
     }
     default:
       return fallback;

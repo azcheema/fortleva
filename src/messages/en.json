@@ -192,7 +192,11 @@
       "changeProject": "Change project",
       "createdVisible": "{key} created — the client can see it",
       "createdVisiblePortalOff": "{key} created and marked for the client — this project's portal is off, so they see nothing yet",
-      "keepHint": "keeps “Client can see” for the next one"
+      "keepHint": "keeps “Client can see” for the next one",
+      "keepFieldsHint": "keeps the person, date and priority for the next one",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Description (optional) — a line starting with - [ ] becomes a checkbox",
+      "submit": "Create task"
     }
   },
   "home": {
@@ -2133,6 +2137,8 @@
     "REPEAT_DAY_INVALID": "Pick a day after today, at most two years ahead.",
     "REPEAT_NESTED": "This task is inside a repeating task, or has one inside it, so it can't repeat too.",
     "REPEAT_TOO_BIG": "This task is too big to repeat: at most 100 tasks under it, and their descriptions together at most 2 MB.",
+    "COPY_TOO_BIG": "This task is too big to copy with its subtasks: at most 100 tasks under it, and their descriptions together at most 2 MB. Untick Subtasks or Description to copy the rest.",
+    "COPY_BUSY": "Someone else was changing the project at the same moment, so nothing was copied. Try again in a moment.",
     "AGREEMENT_ENDED": "This agreement has ended: it can't be paused, run again or given a new end date. Reload the page.",
     "CONTRACT_NOT_SIGNED": "Only a signed contract's reminders can be changed. Reload the page.",
     "FORTNOX_UNAVAILABLE": "The Fortnox connection isn't available yet.",
@@ -2560,6 +2566,36 @@
     },
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
+    "newTask": "New task",
+    "copy": {
+      "action": "Copy…",
+      "title": "Copy {key}",
+      "description": "Make a new task from this one, in this project or another.",
+      "titleLabel": "Title",
+      "projectLabel": "Project",
+      "projectOption": "{key} · {name} — {client}",
+      "bringLabel": "Bring along",
+      "parts": {
+        "description": "Description",
+        "subtasks": "{count, plural, one {# subtask} other {# subtasks}}",
+        "labels": "Labels",
+        "assignee": "Assignee",
+        "assigneeNamed": "Assignee ({name})",
+        "dates": "Start and due dates",
+        "subtasksMany": "More than 100 subtasks"
+      },
+      "tooManySubtasks": "More than 100 tasks under it — too many to copy. The rest can still be copied.",
+      "descriptionsTooBig": "Too much description text to copy together with the subtasks — untick one of the two.",
+      "chooseProject": "Choose a project…",
+      "labelsHint": "Labels that belong only to {key} are left off.",
+      "assigneeHint": "Only people who can work in {key} keep their tasks.",
+      "note": "The copy starts hidden from the client. Comments, files and time stay with the original.",
+      "submit": "Copy task",
+      "copied": "Copied as {key}",
+      "copiedLeftOff": "Copied as {key}. Some labels or people didn’t fit {project} and were left off.",
+      "failed": "The task couldn’t be copied. Try again.",
+      "noProjects": "There’s no project you can copy to."
+    },
     "status": {
       "PLANNED": "Planned",
       "ACTIVE": "Active",
@@ -3009,7 +3045,8 @@
         "delete": "Delete",
         "confirmDelete": "Delete this task?",
         "deleteAnswered": "Your reply is the client’s to keep — archive it instead",
-        "deleteAnsweredArchived": "Your reply is the client’s to keep"
+        "deleteAnsweredArchived": "Your reply is the client’s to keep",
+        "copy": "Copy…"
       },
       "priorityLabel": "Priority",
       "dueLabel": "Due date",
@@ -3650,7 +3687,11 @@
         "repeatChanged": "changed the repeat to {rhythm}, next copy {date}",
         "repeatStopped": "stopped this repeating",
         "repeatedFrom": "created this as the next copy of {task}",
-        "repeatCopied": "created the next copy, {task}"
+        "repeatCopied": "created the next copy, {task}",
+        "copiedFrom": "copied this from {task}",
+        "copiedTo": "made a copy of this, {task}",
+        "copiedFromElsewhere": "copied this from a task in another project",
+        "copiedToElsewhere": "made a copy of this in another project"
       },
       "timer": {
         "start": "Start timer",

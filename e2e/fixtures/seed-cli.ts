@@ -246,6 +246,8 @@ const DBTEST_PREFIXES = [
   "repeat-",
   // Slice 128, the calendar of tasks — `src/modules/work/calendar.dbtest.ts`, `setupTenant("cal")`.
   "cal-",
+  // Slice 129, copying a task and the "New task" form — `src/modules/work/copy.dbtest.ts`, `setupTenant("cpy")`.
+  "cpy-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —

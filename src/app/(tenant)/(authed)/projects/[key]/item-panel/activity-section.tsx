@@ -2,6 +2,7 @@ import {
   CalendarIcon,
   CircleCheckIcon,
   ClockIcon,
+  CopyIcon,
   FileTextIcon,
   FlagIcon,
   type LucideIcon,
@@ -92,6 +93,9 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   labels: TagIcon,
   comment: MessageSquareIcon,
   commentVisibility: MessageSquareIcon,
+  // A member's copy (slice 129) — both ends of it.
+  copiedFrom: CopyIcon,
+  copiedTo: CopyIcon,
 };
 const GLYPH = "size-3";
 
@@ -220,12 +224,16 @@ export async function ActivitySection({
       case "clientMarkedDone":
       case "clientUnmarkedDone":
       case "repeatStopped":
+      case "copiedFromElsewhere":
+      case "copiedToElsewhere":
         return t(s.key);
       case "repeatSet":
       case "repeatChanged":
         return t(s.key, { rhythm: s.rhythm, date: s.date });
       case "repeatedFrom":
       case "repeatCopied":
+      case "copiedFrom":
+      case "copiedTo":
         return t(s.key, { task: s.task });
       case "titleChanged":
       case "priorityChanged":

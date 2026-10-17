@@ -151,3 +151,20 @@ export function panelItemHref(
     ? `/projects/${projectKey}/items/${number}`
     : withItemParam(returnTo, `${projectKey}-${number}`);
 }
+
+/**
+ * Where a task's COPY opens (slice 129, C106 (b)): in the same project, on
+ * the surface it was copied from — the list's peek re-addressed to the copy
+ * (`returnTo` is that surface's own URL); copied into ANOTHER project, or
+ * from a full page, the copy's own page.
+ */
+export function copyLandingHref(
+  surface: "board" | "backlog" | "page",
+  returnTo: string,
+  sourceProjectKey: string,
+  copy: { readonly projectKey: string; readonly number: number },
+): string {
+  return surface !== "page" && copy.projectKey === sourceProjectKey
+    ? withItemParam(returnTo, `${copy.projectKey}-${copy.number}`)
+    : `/projects/${copy.projectKey}/items/${copy.number}`;
+}

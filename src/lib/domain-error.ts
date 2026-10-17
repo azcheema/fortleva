@@ -266,6 +266,9 @@ export type DomainErrorCode =
   | "REPEAT_DAY_INVALID" // the next copy's day must be after today and at most two years ahead
   | "REPEAT_NESTED" // inside a repeating task, or with one inside it: the outer copies would take the inner ones' copies
   | "REPEAT_TOO_BIG" // more than 100 tasks under it, or more than 2 MiB of descriptions (its own and theirs together)
+  // Copying a task (slice 129 — src/modules/work/copy.ts, C106 (a), (b)).
+  | "COPY_TOO_BIG" // with its subtasks: more than 100 tasks under it, or more than 2 MiB of descriptions together
+  | "COPY_BUSY" // the project's queue or a row stayed locked past the wait, three times
   // The stage editors (slice 123 — src/modules/work/stage-editor.ts, C99 (a);
   // the rules are src/lib/stage-rules.ts).
   | "STAGE_NAME_TAKEN" // another stage of this project (or the default set) has that name, ignoring case

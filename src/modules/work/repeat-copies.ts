@@ -172,8 +172,8 @@ export async function makeRepeatCopies(
   return out;
 }
 
-/** A stored description, unticked and through the one gate — or null when it says nothing or will not pass. */
-function freshDescription(doc: unknown): NormalizedDescription | null {
+/** A stored description, unticked and through the one gate — or null when it says nothing or will not pass. Shared with a member's copy (copy.ts, slice 129). */
+export function freshDescription(doc: unknown): NormalizedDescription | null {
   if (doc === null || doc === undefined) return null;
   try {
     const n = normalizeDescription(untickChecklists(doc));

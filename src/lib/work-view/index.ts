@@ -9,6 +9,7 @@ export {
   GROUP_BYS,
   LABEL_CHIP_CAP,
   MAX_BULK_ITEMS,
+  MAX_DESCRIPTION_TEXT,
   MAX_LABEL_NAME_LENGTH,
   MAX_TITLE_LENGTH,
   NO_FILTERS,
@@ -74,6 +75,7 @@ export {
 export { ITEM_SURFACES, itemReturnTo, panelSurfaceOf, type ItemSurface } from "./item-surface";
 
 export {
+  copyLandingHref,
   filtersOf,
   listHrefOf,
   panelItemHref,
