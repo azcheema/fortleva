@@ -10,7 +10,7 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 127 IS BUILT — REPEATING TASKS (founder decision C103 (a)–(f), all six with the recommendation; (d)–(f) asked this session, before the build). The last of the three Basecamp-comparison slices (C101–C103). NEXT = founder orders — ask on “continue” with a recommendation (Phase 7 stays postponed: propose own-use work, never Phase 7 as next).** CI result: see the commit after this one.
+**STATE, 2026-10-17 (latest): SLICE 127 IS BUILT — REPEATING TASKS (founder decision C103 (a)–(f), all six with the recommendation; (d)–(f) asked this session, before the build). The last of the three Basecamp-comparison slices (C101–C103). NEXT = founder orders — ask on “continue” with a recommendation (Phase 7 stays postponed: propose own-use work, never Phase 7 as next).** `6d5ed5e` + test fix `103b56e`, **GREEN — CI 39002274408** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991 from an empty database, harness 302 / 5 skipped in 28.9 min). The first run (39001264686) failed ONLY `work.dbtest.ts`'s deliberately CLOSED `toEqual` of the panel's caps, which the new `caps.repeat` had to be added to — test-only, 60/60 locally after.
 
 **What it is.**
 - **Setting it.** A task's panel has a **Repeat** row after Due date, offering Every week, Every 2 weeks, Every month, Every 3 months and Every year. While the task repeats, a **Next copy** row follows with a day picker.
