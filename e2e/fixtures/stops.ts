@@ -151,6 +151,12 @@ export const stops = (seed: E2ESeed): Stop[] => {
 
     // ── the member plane ────────────────────────────────────────────
     { name: "home", path: "/home" },
+    // Slice 128 (C105): the calendar of tasks — the month, and a week. The
+    // shared workspace's seeded tasks are due 3 days ago, in 3 days and in 10
+    // (relative to the run), so what the month holds moves with the date; the
+    // craft audits hold whatever it holds.
+    { name: "calendar", path: "/calendar" },
+    { name: "calendar-week", path: "/calendar?view=week" },
     {
       // Global chrome (UI.md §3.2) that held none of the design shots
       // until now — and the stop that would have caught the palette

@@ -8,6 +8,7 @@ import {
   HouseIcon,
   BellIcon,
   CalendarClockIcon,
+  CalendarDaysIcon,
   ChartColumnIcon,
   Columns3Icon,
   InboxIcon,
@@ -36,6 +37,9 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   search: SearchIcon,
   clients: Building2Icon,
   projects: FolderKanbanIcon,
+  // The calendar of tasks (slice 128). Not Renewals' clock-calendar, and not
+  // the due date's plain calendar (the history's and the calendar's "Move…").
+  calendar: CalendarDaysIcon,
   time: TimerIcon,
   files: FolderIcon,
   // Not the key: that glyph is Roles' (and a login row's), and one icon

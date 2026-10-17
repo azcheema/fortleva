@@ -244,6 +244,8 @@ const DBTEST_PREFIXES = [
   "tpl-",
   // Slice 127, repeating tasks — `src/modules/work/repeat.dbtest.ts`, `setupTenant("repeat")`.
   "repeat-",
+  // Slice 128, the calendar of tasks — `src/modules/work/calendar.dbtest.ts`, `setupTenant("cal")`.
+  "cal-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -2964,6 +2966,61 @@ async function runRepeats(tenantId: string): Promise<void> {
   process.stdout.write(`${MARKER}${JSON.stringify({ made: r.made, failed: r.failed })}\n`);
 }
 
+/**
+ * A project for `calendar.spec.ts` (slice 128), in a throwaway workspace: two
+ * tasks due today and in two days (the workspace's Stockholm day), and a
+ * weekly repeating task whose next copy is planted for TOMORROW — so that
+ * copy is due six days after. Through the real services as the owner; a fresh
+ * key per run.
+ */
+async function calendarWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("calendar-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { createClient } = await import("../../src/clients/service");
+  const { createProject } = await import("../../src/projects/service");
+  const { createItem, setItemRepeat, updateItemFields } = await import("../../src/modules/work");
+  const { dateColumn, localDateString } = await import("../../src/lib/duration");
+  const { addDays } = await import("../../src/lib/week");
+  try {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: owner.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const clientName = "E2E Calendar Client";
+    const client =
+      (await db.client.findFirst({ where: { tenantId, name: clientName }, select: { id: true } })) ??
+      (await createClient(ctx, { name: clientName }));
+    const suffix = randomUUID().replace(/[^a-z0-9]/g, "").slice(0, 5).toUpperCase();
+    const { id: projectId, key } = await createProject(ctx, { clientId: client.id, key: `CA${suffix}`, name: `E2E Calendar ${suffix}` });
+    // A second, empty project, so the page's project filter (drawn only with
+    // more than one project) is there to be used (the code review's L2).
+    await createProject(ctx, { clientId: client.id, key: `CB${suffix}`, name: `E2E Calendar other ${suffix}` });
+    const today = localDateString(new Date(), "Europe/Stockholm");
+    const due = async (title: string, day: string) => {
+      const t = await createItem(ctx, { projectId, title });
+      await updateItemFields(ctx, t.id, { targetDate: dateColumn(day) });
+      return t.number;
+    };
+    const first = await due(`Write the newsletter ${suffix}`, today);
+    const second = await due(`Send the invoice ${suffix}`, addDays(today, 2));
+    const weekly = await createItem(ctx, { projectId, title: `Weekly check ${suffix}` });
+    await setItemRepeat(ctx, weekly.id, { rhythm: "WEEKLY" });
+    const tomorrow = addDays(today, 1);
+    await db.workItemRepeat.updateMany({ where: { tenantId, workItemId: weekly.id }, data: { nextOn: dateColumn(tomorrow), anchorDay: null } });
+    process.stdout.write(
+      `${MARKER}${JSON.stringify({
+        projectKey: key,
+        today,
+        first: { number: first, title: `Write the newsletter ${suffix}` },
+        second: { number: second, title: `Send the invoice ${suffix}` },
+        weekly: { number: weekly.number, title: `Weekly check ${suffix}`, copyDue: addDays(tomorrow, 6) },
+      })}\n`,
+    );
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 /** Every project template of a throwaway workspace deleted (`templates.spec.ts`'s afterAll, pass or fail). */
 async function clearTemplates(tenantId: string): Promise<void> {
   if (!tenantId) throw new Error("clear-templates: a tenant id");
@@ -4449,6 +4506,7 @@ const main = async (): Promise<void> => {
   if (command === "clear-templates") return clearTemplates(argument!);
   if (command === "repeat-due") return repeatDue(argument!, process.argv[4]!, process.argv[5]!);
   if (command === "run-repeats") return runRepeats(argument!);
+  if (command === "calendar-workspace") return calendarWorkspace(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

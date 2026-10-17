@@ -8,9 +8,12 @@ import { firstRunOn, requireSeed, type E2ESeed } from "./fixtures/tenant";
  *
  * IN THE SECOND WORKSPACE: the shared one has the list switched off by the
  * seed (its Home is other specs' counts and the visual walk's photographs),
- * while the second has only its owner and no task, so the list is there.
- * This file runs before `import.spec.ts`, which then gives that workspace a
- * client, a project and tasks. The workspace pointer is the SESSION's, so
+ * while the second has only its owner, so the list is there. (Since slice 128
+ * `calendar.spec.ts`, which runs first alphabetically, gives that workspace a
+ * client, two projects and tasks: those steps read as done, and the list stays
+ * — its team step is never done there.) This file runs before
+ * `import.spec.ts`, which gives that workspace another client, project and
+ * tasks. The workspace pointer is the SESSION's, so
  * every test switches there and the afterEach switches back.
  */
 

@@ -16,6 +16,7 @@ export type NavIcon =
   | "notifications"
   | "clients"
   | "projects"
+  | "calendar"
   | "time"
   | "files"
   | "vault"
@@ -50,6 +51,7 @@ export type NavEntry = {
     | "notifications"
     | "clients"
     | "projects"
+    | "calendar"
     | "time"
     | "files"
     | "vault"
@@ -110,6 +112,18 @@ export const NAV: readonly NavEntry[] = [
     permission: "project:view",
     goKey: "P",
     mobileTab: true,
+  },
+  // Slice 128 (founder decision C105 (a)): the calendar of tasks — every task
+  // with a due date across the projects the member reaches. Gated on the code
+  // its read asks first (it also asks `project:view`, as Projects does). No
+  // `G` key: D, E and L are refused (keymap.test.ts) and no other fits. Not a
+  // phone tab: the bottom row is fixed (UI.md §3.3); it is in More.
+  {
+    id: "calendar",
+    labelKey: "calendar",
+    href: "/calendar",
+    icon: "calendar",
+    permission: "work_item:view",
   },
   // 2T (UI.md §3.1 "Time"; §3.3 the mobile Timer tab): hidden without time:track.
   {

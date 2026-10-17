@@ -10,7 +10,30 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 127b IS BUILT — A REPEAT MARKER ON THE BOARD AND THE BACKLOG (the founder's pick on "what is next", over going live, a week of use first, and erasing old deleted tasks — against my recommendation of going live). NEXT = founder orders — ask with a recommendation (Phase 7 stays postponed).** `64dbb01`, **GREEN first run — CI 39023635835** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991, harness 302 / 5 skipped in 24.9 min).
+**STATE, 2026-10-17 (latest): SLICE 128 IS BUILT — A CALENDAR OF TASKS (founder decision C105: the pick on "suggest me something else", over forwarding an email to make a task, due dates in Google/Apple Calendar, and saved filters; then four answers, all WITH the recommendation). NEXT = founder orders — ask with a recommendation (going live, RUNBOOK §11, is still the one I recommend; Phase 7 stays postponed).** CI result: see the commit after this one.
+
+**What it is.** `/calendar` is a new rail entry after Projects (`work_item:view`; the page also asks `project:view`; no `G` key; in More on a phone).
+- **What it shows:** every task with a due date in the projects the member reaches — not deleted or archived, not Cancelled or in Triage, in a project not archived. Done tasks are struck through; open overdue ones are in the danger tone.
+- **Views:** Month (default; three entries a day, then "+N more", which links to that week) and Week. A phone gets an agenda. Every control is a link — Month/Week, previous/Today/next, "Only mine" — plus a project select.
+- **The copies repeating tasks will make** are drawn faint on their due days, up to three years ahead.
+- **Moving a task:** drag it onto another day (fine pointer only, ARC-17), or use its **Move…** button (today, tomorrow and 13 days, or a typed date). Both go through `updateItemFields` (`work_item:edit` + scope; routine history, no audit).
+- **Formatting:** every word and date is formatted on the server.
+
+**Built:**
+- `src/lib/calendar-plan.ts` — pure: the period, the params, the projection walk.
+- `src/modules/work/calendar.ts` — `readCalendar`, scope composed with `AND` for projects, tasks and series; caps 500/500; the projection horizon.
+- `calendar/{page,calendar-board,calendar-filter,actions}`, the nav entry and `CalendarDaysIcon`.
+- Two visual stops (`calendar`, `calendar-week`; AGENTS.md now counts 100 stops / 400 shots).
+- No migration, no new permission code.
+
+**Reviews** (fresh agents, read-only; dispositions in `docs/research/2026-10-17-slice-128-task-calendar-design.md` §6):
+- **Security:** no HIGH or MEDIUM. One LOW, taken: a far-future `?date=` made the projection walk hold the event loop, so there is now a three-year horizon and a loop break. Also NITs: a MemberProject-only seat test and the redirect.
+- **Code:** one **HIGH**, taken. The title link was natively draggable, so a drag from the title never reached the drag library. The local e2e passed only because today is a Saturday and its drop fell on the task's own day; it now drags from the title onto another day. Two MEDIUM, taken: the e2e failed on Sundays, and focus fell to `<body>` after Move…. Also six LOW and NITs.
+- **A narrow re-check of the fixes:** no HIGH or MEDIUM. One LOW, taken: focus also fell to `<body>` after a move to a day not drawn, or a refused one — now the calendar's body takes it, or the chip back in its cell. One NIT, taken: the dialog's close-focus branch never ran, so it was removed. The rounds converged; no further round.
+
+**Gates:** typecheck 0 · ESLint 0 · unit 202 / 3 074 / 1 skipped · `calendar.dbtest.ts` 10/10 against dev · `pnpm build` 0 · e2e `calendar.spec.ts` 2/2 on port 3457 · an overflow probe (no horizontal scroll at 390/768/1024/1440, both views) and screenshots looked at.
+
+**STATE, 2026-10-17: SLICE 127b IS BUILT — A REPEAT MARKER ON THE BOARD AND THE BACKLOG (the founder's pick on "what is next", over going live, a week of use first, and erasing old deleted tasks — against my recommendation of going live). NEXT = founder orders — ask with a recommendation (Phase 7 stays postponed).** `64dbb01`, **GREEN first run — CI 39023635835** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991, harness 302 / 5 skipped in 24.9 min).
 
 **What it is.**
 - A small repeat icon (`RepeatIcon`, muted) on the task a repeat is made from, the newest of its series, never an older copy.

@@ -127,6 +127,8 @@ export { updateItemDescription, type DescriptionSaved } from "./description";
 // shape. The copier (`repeat-copies.ts`) stays off the barrel: only the jobs
 // route and the harness run it.
 export { setItemRepeat, type ItemRepeat, type RepeatCommitted } from "./repeat";
+// Slice 128 — the calendar of tasks (C105): its one read.
+export { readCalendar, type CalendarCopy, type CalendarEntry, type CalendarRead } from "./calendar";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";
 // Types only — `readItemSubtasks` stays off the barrel for the reason `readItemActivity` does (subtasks.ts).
 export { type ItemSubtasks, type SubtaskEntry } from "./subtasks";

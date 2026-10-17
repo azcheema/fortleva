@@ -320,6 +320,19 @@ export async function templateSource(tenantId: string): Promise<{ projectKey: st
   return runCli<{ projectKey: string; projectName: string }>(["template-source", tenantId]);
 }
 
+/** `calendar.spec.ts`'s project (slice 128): two tasks due today and in two days, and a weekly repeat next tomorrow. */
+export type CalendarWorkspace = {
+  projectKey: string;
+  today: string;
+  first: { number: number; title: string };
+  second: { number: number; title: string };
+  weekly: { number: number; title: string; copyDue: string };
+};
+
+export async function calendarWorkspace(tenantId: string): Promise<CalendarWorkspace> {
+  return runCli<CalendarWorkspace>(["calendar-workspace", tenantId]);
+}
+
 /** A task's repeat planted due — its next day yesterday in UTC (slice 127, `repeat.spec.ts`). */
 export async function repeatDue(tenantId: string, projectKey: string, number: number): Promise<{ nextOn: string }> {
   return runCli<{ nextOn: string }>(["repeat-due", tenantId, projectKey, String(number)]);
