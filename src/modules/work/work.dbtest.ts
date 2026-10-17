@@ -1425,6 +1425,8 @@ describe("getItemDetail — the panel's one scoped read", () => {
       mention: true,
       manageLabels: true,
       endRequest: true,
+      // Slice 127: `work_item:edit` + `work_item:create` — the Repeat row is a control.
+      repeat: true,
     });
 
     // **AND THE ONE CAP WHOSE WHOLE POINT IS THAT IT DENIES SOMEBODY.**
