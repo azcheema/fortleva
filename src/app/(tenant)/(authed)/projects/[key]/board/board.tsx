@@ -15,7 +15,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { HourglassIcon, KanbanSquareIcon, ListChecksIcon, PlusIcon, TimerIcon, UserRoundIcon } from "lucide-react";
+import { HourglassIcon, KanbanSquareIcon, ListChecksIcon, PlusIcon, RepeatIcon, TimerIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -1057,6 +1057,9 @@ function BoardCard({
   const t = useTranslations("projects.board");
   const tBacklog = useTranslations("projects.backlog");
   const tCommon = useTranslations("common");
+  const tRepeat = useTranslations("projects.item.repeat");
+  // The repeat marker's words, once (slice 127b).
+  const repeatWords = item.repeatRhythm ? tRepeat("marker", { rhythm: tRepeat(`inSentence.${item.repeatRhythm}`) }) : null;
   const ref = useRef<HTMLElement>(null);
   const [dragging, setDragging] = useState(false);
   const [edge, setEdge] = useState<Edge | null>(null);
@@ -1261,8 +1264,24 @@ function BoardCard({
           simply did not render, and the card said nothing about an
           assignee it has. It only ever worked on cards carrying some
           other meta. Found by a fresh code review. */}
-      {item.checklistTotal > 0 || item.estimateMinutes !== null || spentMinutesOf(spent, item.id) >= 1 || timer || item.assigneeMemberId || item.assigneeContactId ? (
+      {item.checklistTotal > 0 ||
+      item.estimateMinutes !== null ||
+      spentMinutesOf(spent, item.id) >= 1 ||
+      timer ||
+      item.assigneeMemberId ||
+      item.assigneeContactId ||
+      repeatWords ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {/* Slice 127b: the task a repeat is made from — the newest of its
+              series. In the META row, not the top row, which holds the key,
+              the priority, the visibility chip and the menu "only just" (the
+              review's L3). No date, so the server's and the browser's ICU
+              can never disagree on hydration. */}
+          {repeatWords ? (
+            <span role="img" data-testid="repeat-marker" className="inline-flex items-center" aria-label={repeatWords}>
+              <RepeatIcon aria-hidden="true" className="size-3" />
+            </span>
+          ) : null}
           {item.checklistTotal > 0 ? (
             <span role="img" className="inline-flex items-center gap-1" aria-label={t("card.checklist", { done: item.checklistDone, total: item.checklistTotal })}>
               <ListChecksIcon aria-hidden="true" className="size-3" />

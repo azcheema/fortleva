@@ -15,6 +15,7 @@ import {
   createItem,
   createLabel,
   deleteItem,
+  listItems,
   restoreDeletedItem,
   setItemArchived,
   setItemLabel,
@@ -533,6 +534,10 @@ describe("a copy (copyOne)", () => {
       [holder.id, null],
       [copy.id, "2026-12-01"],
     ]);
+    // Slice 127b: the board's and backlog's marker is on the newest only.
+    const listed = await listItems(ownerCtx(), pOn, { includeArchived: true });
+    expect(listed.items.find((i) => i.id === copy.id)?.repeatRhythm).toBe("MONTHLY");
+    expect(listed.items.find((i) => i.id === holder.id)?.repeatRhythm).toBeNull();
 
     // Told ONCE — the employee holds the copy and its subtask.
     const told = await f.platform.notification.findMany({
@@ -568,6 +573,9 @@ describe("a copy (copyOne)", () => {
     await expect(setItemRepeat(ownerCtx(), holder.id, { rhythm: "WEEKLY" }, NOW)).rejects.toMatchObject({ code: "REPEAT_NOT_NEWEST" });
     await setItemRepeat(ownerCtx(), copy.id, null, NOW);
     expect(await f.platform.workItemRepeatItem.count({ where: { tenantId: f.tenantId, repeatId: seriesId } })).toBe(0);
+    // …and the marker goes with it (slice 127b; the review's L2).
+    const after = await listItems(ownerCtx(), pOn, { includeArchived: true });
+    expect(after.items.find((i) => i.id === copy.id)?.repeatRhythm).toBeNull();
     expect((await setItemRepeat(ownerCtx(), holder.id, { rhythm: "WEEKLY" }, NOW)).changed).toBe(true);
     await setItemRepeat(ownerCtx(), holder.id, null, NOW);
   }, LONG);

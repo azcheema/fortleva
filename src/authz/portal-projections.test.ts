@@ -147,6 +147,13 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // charts — a gate whose effect reaches the client through the rows' derived
   // visibility; the column itself is the agency's.
   "portalShowSpeed",
+  // Slice 127/127b: a task's repeat — the agency's routine, in class-A tables
+  // no contact can read, and the list row's marker field.
+  "repeatHeld",
+  "repeatMember",
+  "repeatRhythm",
+  "workItemRepeat",
+  "workItemRepeatItem",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -484,6 +491,12 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       // charts — a gate whose effect reaches the client through the rows' derived
       // visibility; the column itself is the agency's.
       "portalShowSpeed",
+      // Slice 127/127b: a task's repeat.
+      "repeatHeld",
+      "repeatMember",
+      "repeatRhythm",
+      "workItemRepeat",
+      "workItemRepeatItem",
     ]);
   });
 
@@ -577,6 +590,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         // visibility; the column itself is the agency's.
         "portalShowSpeed",
         "origin",
+        // Slice 127/127b: a task's repeat, as a relation a select would name.
+        "repeatHeld",
+        "repeatMember",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -792,6 +808,11 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   // visibility; the column itself is the agency's.
   "portalShowSpeed",
   "origin",
+  // Slice 127/127b: a task's repeat, as the relation a select would name on
+  // ANY structural-tier surface (a broker under the system principal, where
+  // `portal_deny` does not apply) — the review's L1.
+  "repeatHeld",
+  "repeatMember",
 ]);
 
 /**

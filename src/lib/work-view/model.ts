@@ -385,6 +385,8 @@ export function pendingCreateItem(input: {
     // A title-only create carries no labels, and the `L` picker is in the
     // panel: the refresh cannot bring any either.
     labels: [],
+    // Nor a repeat — that is set in the panel too (slice 127).
+    repeatRhythm: null,
   };
 }
 

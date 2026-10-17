@@ -21,6 +21,7 @@ import { loadItemInScope, type ItemRow } from "./rows";
 import { ensureProjectStates, principalOf, transitionState, type WorkCtx } from "./states";
 import { readItemSubtasks, type ItemSubtasks, type SubtaskEntry } from "./subtasks";
 import { childTypeOf, type StateSeedKey, type StatusValue } from "@/lib/enum-map";
+import { isRepeatRhythm, type RepeatRhythm } from "@/lib/repeat-rules";
 import { stateLabel } from "@/lib/state-label";
 
 /**
@@ -164,6 +165,14 @@ export type ItemListEntry = {
    * catch it if that one ever reaches for this field.
    */
   labels: LabelEntry[];
+  /**
+   * The rhythm when this task HOLDS a repeat — the newest of its series,
+   * the one the next copy is made from (slice 127b: the board card's and the
+   * backlog row's repeat marker). Null for every other task, older copies
+   * included. INTERNAL-only like the rest of this projection; the portal's
+   * forbidden-columns test lists it.
+   */
+  repeatRhythm: RepeatRhythm | null;
 };
 
 export type WorkflowStateEntry = {
@@ -345,6 +354,9 @@ export async function listItems(
             // (see `ItemListEntry.parentRef`). A join on this leg, not a
             // new leg.
             parent: { select: { number: true, visibility: true, deletedAt: true } },
+            // Slice 127b: the rhythm when this task holds a repeat — the
+            // card's and row's marker. A join on this leg, not a new leg.
+            repeatHeld: { select: { rhythm: true } },
           },
         }),
         tx.workflowState.findMany({
@@ -428,6 +440,7 @@ export async function listItems(
         checklistDone: i.checklistDone,
         attachmentCount: attachmentsById.get(i.id) ?? 0,
         labels: labelsById.get(i.id) ?? [],
+        repeatRhythm: i.repeatHeld && isRepeatRhythm(i.repeatHeld.rhythm) ? i.repeatHeld.rhythm : null,
       })),
       states,
       members,
@@ -511,7 +524,9 @@ async function projectMilestones(
 // (`ItemDetailResult.labels` — applied plus the vocabulary it may pick
 // from), so the list's chip array would be a second, thinner copy of
 // the same fact on the same read. One surface, one source.
-export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels"> & {
+// `repeatRhythm` is the list's marker; the panel reads the whole setting
+// (`ItemDetailResult.repeat`).
+export type ItemDetail = Omit<ItemListEntry, "type" | "priority" | "labels" | "repeatRhythm"> & {
   // Closed unions, not the list's open strings: the panel interpolates
   // them straight into message keys (`states.workItemType.${type}`),
   // which next-intl can only type against the catalogue when the value

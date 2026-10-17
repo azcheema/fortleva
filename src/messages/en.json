@@ -3527,6 +3527,7 @@
         "copyOf": "Repeats from {key}",
         "holderDeleted": "Paused: {key} is deleted",
         "changed": "Repeats {rhythm}, next copy {date}",
+        "marker": "Repeats {rhythm}",
         "stopped": "Stopped repeating",
         "failed": "The repeat did not save. The panel shows the current setting."
       },

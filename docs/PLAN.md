@@ -10,7 +10,29 @@
 
 ## 0. Next session starts here *(amended 2026-08-21 after the review session; first written at the end of the 2T settings session — keep this section current)*
 
-**STATE, 2026-10-17 (latest): SLICE 127 IS BUILT — REPEATING TASKS (founder decision C103 (a)–(f), all six with the recommendation; (d)–(f) asked this session, before the build). The last of the three Basecamp-comparison slices (C101–C103). NEXT = founder orders — ask on “continue” with a recommendation (Phase 7 stays postponed: propose own-use work, never Phase 7 as next).** `6d5ed5e` + test fix `103b56e`, **GREEN — CI 39002274408** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991 from an empty database, harness 302 / 5 skipped in 28.9 min). The first run (39001264686) failed ONLY `work.dbtest.ts`'s deliberately CLOSED `toEqual` of the panel's caps, which the new `caps.repeat` had to be added to — test-only, 60/60 locally after.
+**STATE, 2026-10-17 (latest): SLICE 127b IS BUILT — A REPEAT MARKER ON THE BOARD AND THE BACKLOG (the founder's pick on "what is next", over going live, a week of use first, and erasing old deleted tasks — against my recommendation of going live). NEXT = founder orders — ask with a recommendation (Phase 7 stays postponed).** CI result: see the commit after this one.
+
+**What it is.**
+- A small repeat icon (`RepeatIcon`, muted) on the task a repeat is made from, the newest of its series, never an older copy.
+- **On the board card** it comes first in the META row, as `role="img"` named "Repeats every week".
+- **On the backlog row** it sits in the TITLE cell beside the running-timer mark, with the same words as `title` + `sr-only`.
+- Neither surface widens. The code review's L3 measured the first cut at about +18 px in the card's tight top row and in the key column, so it was moved.
+- There is no date, so the server's and the browser's ICU can never disagree on hydration.
+- It marks the setting, not the schedule: a task in a closed project keeps it, and while the newest copy is deleted nothing carries it (UI.md §5.4).
+
+**Built:** `ItemListEntry.repeatRhythm` — a join on `listItems`' first leg, not a new leg; `ItemDetail` omits it. The portal's forbidden-columns lists gain `repeatHeld`, `repeatMember`, `repeatRhythm`, `workItemRepeat` and `workItemRepeatItem`, on the text tier and its pin. `repeatHeld` and `repeatMember` are also on the structural tier and its pin, per the review's L1. No migration, no new permission code.
+
+**Review** (one fresh agent, read-only): no HIGH or MEDIUM; 3 LOW and 3 NIT, all taken:
+- L1: the structural tier list.
+- L2: a dbtest now pins that Stop clears the marker, and the e2e comment was reworded.
+- L3: width — the marker moved to the cells with room.
+- NITs: no duplicate `title` on the card's `role="img"`; the words computed once; UI.md says what the marker means in a closed project.
+
+The rounds converged, so no second round was run.
+
+**Gates:** typecheck 0 · ESLint 0 · unit 201 / 3 060 / 1 skipped · `repeat.dbtest.ts` 21/21 + `labels.dbtest.ts` against dev · `pnpm build` 0 · e2e `repeat.spec.ts` 1/1 on port 3457. One local run was lost to a Windows `next start` crash (0xC0000409) in the harness's global setup, before any test; it passed on restart.
+
+**STATE, 2026-10-17: SLICE 127 IS BUILT — REPEATING TASKS (founder decision C103 (a)–(f), all six with the recommendation; (d)–(f) asked this session, before the build). The last of the three Basecamp-comparison slices (C101–C103). NEXT = founder orders — ask on “continue” with a recommendation (Phase 7 stays postponed: propose own-use work, never Phase 7 as next).** `6d5ed5e` + test fix `103b56e`, **GREEN — CI 39002274408** (unit 201 / 3 060 / 1 skipped, test:db 121 / 1 991 from an empty database, harness 302 / 5 skipped in 28.9 min). The first run (39001264686) failed ONLY `work.dbtest.ts`'s deliberately CLOSED `toEqual` of the panel's caps, which the new `caps.repeat` had to be added to — test-only, 60/60 locally after.
 
 **What it is.**
 - **Setting it.** A task's panel has a **Repeat** row after Due date, offering Every week, Every 2 weeks, Every month, Every 3 months and Every year. While the task repeats, a **Next copy** row follows with a day picker.

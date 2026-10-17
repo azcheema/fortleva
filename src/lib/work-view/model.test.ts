@@ -82,6 +82,7 @@ const item = (id: string, over: Partial<WorkItem> = {}): WorkItem => ({
   checklistDone: 0,
   attachmentCount: 0,
   labels: [],
+  repeatRhythm: null,
   ...over,
 });
 

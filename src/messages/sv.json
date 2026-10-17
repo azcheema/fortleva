@@ -3527,6 +3527,7 @@
         "copyOf": "Upprepas från {key}",
         "holderDeleted": "Pausad: {key} är borttagen",
         "changed": "Upprepas {rhythm}, nästa kopia {date}",
+        "marker": "Upprepas {rhythm}",
         "stopped": "Upprepas inte längre",
         "failed": "Upprepningen sparades inte. Panelen visar den nuvarande inställningen."
       },

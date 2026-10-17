@@ -92,6 +92,15 @@ test("a task set to repeat gets its copy on its day; the older one links to the 
   await peek(page, first);
   await expect(rail(page).getByTestId("item-repeat")).toContainText("Every week");
 
+  // Slice 127b: the backlog row and the board card carry the repeat marker.
+  await page.goto(`/projects/${project.projectKey}/backlog`);
+  await expect(rows(page, title).getByTestId("repeat-marker")).toHaveCount(1, { timeout: 20_000 });
+  await expect(rows(page, title).getByTestId("repeat-marker")).toHaveAttribute("title", "Repeats every week");
+  await expect(rows(page, title).getByTestId("repeat-marker")).toContainText("Repeats every week"); // its sr-only words
+  await page.goto(`/projects/${project.projectKey}/board`);
+  const card = page.getByTestId("board-card").filter({ hasText: title });
+  await expect(card.getByRole("img", { name: "Repeats every week" })).toBeVisible({ timeout: 20_000 });
+
   // Its day comes; the copier runs for this workspace. AT LEAST one copy: a
   // retried run may have left an earlier attempt's series due in this
   // workspace — this test's own copy is counted on its backlog below.
@@ -113,6 +122,12 @@ test("a task set to repeat gets its copy on its day; the older one links to the 
   await peek(page, newest);
   await expect(rail(page).getByTestId("item-repeat")).toContainText("Every week");
   await expect(rail(page).getByTestId("item-repeat-next")).toBeVisible();
+  // The marker moved with it: on the newest row only.
+  await page.goto(`/projects/${project.projectKey}/backlog`);
+  await expect(rows(page, title).getByTestId("repeat-marker")).toHaveCount(1, { timeout: 20_000 });
+  await expect(
+    page.locator('[data-slot="table-row"]', { hasText: `${project.projectKey}-${newest}` }).filter({ hasText: title }).getByTestId("repeat-marker"),
+  ).toHaveCount(1);
 
   // The newest deleted: the older task says the series is paused, and can
   // stop it — so a newest copy deleted for good never strands its series.
@@ -139,4 +154,10 @@ test("a task set to repeat gets its copy on its day; the older one links to the 
   await expect(rail(page).getByTestId("item-repeat-copy")).toHaveCount(0);
   await expect(rail(page).getByTestId("item-repeat")).toContainText("Doesn't repeat");
   await expect(rail(page).getByTestId("item-repeat-next")).toHaveCount(0);
+  // …and no live row of this title carries the marker. (The older task lost
+  // it when the copy was made, above; that Stop itself clears a marker is
+  // `repeat.dbtest.ts`'s — the newest here is in the bin.)
+  await page.goto(`/projects/${project.projectKey}/backlog`);
+  await expect(rows(page, title)).toHaveCount(1, { timeout: 20_000 });
+  await expect(rows(page, title).getByTestId("repeat-marker")).toHaveCount(0);
 });

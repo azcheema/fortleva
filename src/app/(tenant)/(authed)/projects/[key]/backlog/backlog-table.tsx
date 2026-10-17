@@ -12,7 +12,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { PaperclipIcon, PlusIcon, TimerIcon } from "lucide-react";
+import { PaperclipIcon, PlusIcon, RepeatIcon, TimerIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -493,6 +493,7 @@ export function BacklogTable({
   const tCommon = useTranslations("common");
   const tProjects = useTranslations("projects");
   const tPriority = useTranslations("states.priority");
+  const tRepeat = useTranslations("projects.item.repeat");
   const router = useRouter();
   const { run } = useRun(t("actionFailed"));
   const deletedToast = useDeletedToast(projectKey);
@@ -1547,6 +1548,10 @@ export function BacklogTable({
               }
               const item = row.item;
               const done = item.stateCategory === "DONE" || item.stateCategory === "CANCELLED";
+              // The repeat marker's words, once (slice 127b).
+              const repeatWords = item.repeatRhythm
+                ? tRepeat("marker", { rhythm: tRepeat(`inSentence.${item.repeatRhythm}`) })
+                : null;
               // The keyboard and touch twin of the drag (UI.md §7.1 asks
               // for one; §5.12 says reorder verbs live in the menu, never
               // behind hover, because a hover-only control is unreachable
@@ -1731,6 +1736,21 @@ export function BacklogTable({
                         >
                           <TimerIcon aria-hidden="true" className="size-3.5" />
                           <span className="sr-only">{t("timerRunning")}</span>
+                        </span>
+                      ) : null}
+                      {/* Slice 127b: the task a repeat is made from (the
+                          newest of its series), beside the timer — in THIS
+                          cell, the table's only horizontal slack, so no column
+                          grows (the review's L3). No date: words the server
+                          and the browser agree on. */}
+                      {repeatWords ? (
+                        <span
+                          data-testid="repeat-marker"
+                          className="inline-flex shrink-0 items-center text-muted-foreground"
+                          title={repeatWords}
+                        >
+                          <RepeatIcon aria-hidden="true" className="size-3.5" />
+                          <span className="sr-only">{repeatWords}</span>
                         </span>
                       ) : null}
                       <InlineEdit
