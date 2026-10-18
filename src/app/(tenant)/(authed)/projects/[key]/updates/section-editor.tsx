@@ -112,7 +112,9 @@ export function SectionEditor({
           label={toolbarLabel}
           marks={toolbarMarks(editor, SECTION_MARKS, state?.marks ?? null, (key) => t(`format.${key}`))}
         />
-        <TableMenu editor={editor} testId={`${testId}-table-menu`} />
+        {/* Never `${testId}-…`: `update-layouts.spec` reads the sections by the
+            `update-section-` prefix, and a menu sharing it read as a section. */}
+        <TableMenu editor={editor} testId={`table-menu-${testId}`} />
       </div>
       <div
         className={cn(

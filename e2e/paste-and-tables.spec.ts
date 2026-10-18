@@ -201,7 +201,7 @@ test("a table pasted into a progress update shows in its preview — what the cl
   await page.goto(`/projects/${seed.projectKey}/updates`);
   await page.getByTestId("new-update").click();
   await expect(page.getByTestId("update-composer")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("update-section-SUMMARY-table-menu")).toBeVisible();
+  await expect(page.getByTestId("table-menu-update-section-SUMMARY")).toBeVisible();
 
   const editor = page.getByTestId("update-section-SUMMARY");
   await editor.click();
