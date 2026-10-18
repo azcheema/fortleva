@@ -252,6 +252,8 @@ const DBTEST_PREFIXES = [
   "tasks-",
   // Slice 130, all projects on one timeline — `src/projects/lineup.dbtest.ts`, `setupTenant("lineup")`.
   "lineup-",
+  // Slice 131, moving a task to another project — `src/modules/work/move.dbtest.ts`, `setupTenant("mv")`.
+  "mv-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -3087,6 +3089,38 @@ async function tasksWorkspace(tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * A client of its own per run for `move-task.spec.ts` (slice 131), in a
+ * throwaway workspace: two projects, and in the first a task with one
+ * subtask — so the task's only other project is the second, and the Move
+ * dialog chooses it by itself. Through the real services as the owner.
+ */
+async function moveWorkspace(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("move-workspace: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { createClient } = await import("../../src/clients/service");
+  const { createProject } = await import("../../src/projects/service");
+  const { createItem } = await import("../../src/modules/work");
+  try {
+    const owner = await db.member.findFirstOrThrow({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const ctx = { tenantId, actor: { memberId: owner.id, mfa: { enrolled: false, verifiedAt: null } } };
+    const suffix = randomUUID().replace(/[^a-z0-9]/g, "").slice(0, 5).toUpperCase();
+    const client = await createClient(ctx, { name: `E2E Move Client ${suffix}` });
+    const from = await createProject(ctx, { clientId: client.id, key: `MA${suffix}`, name: `E2E Move site ${suffix}` });
+    const to = await createProject(ctx, { clientId: client.id, key: `MB${suffix}`, name: `E2E Move SEO ${suffix}` });
+    const title = `Rewrite the about page ${suffix}`;
+    const t = await createItem(ctx, { projectId: from.id, title });
+    await createItem(ctx, { projectId: from.id, title: `Collect the photos ${suffix}`, parentId: t.id });
+    process.stdout.write(
+      `${MARKER}${JSON.stringify({ fromKey: from.key, toKey: to.key, toName: `E2E Move SEO ${suffix}`, number: t.number, title })}\n`,
+    );
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 /** Every project template of a throwaway workspace deleted (`templates.spec.ts`'s afterAll, pass or fail). */
 async function clearTemplates(tenantId: string): Promise<void> {
   if (!tenantId) throw new Error("clear-templates: a tenant id");
@@ -4574,6 +4608,7 @@ const main = async (): Promise<void> => {
   if (command === "run-repeats") return runRepeats(argument!);
   if (command === "calendar-workspace") return calendarWorkspace(argument!);
   if (command === "tasks-workspace") return tasksWorkspace(argument!);
+  if (command === "move-workspace") return moveWorkspace(argument!);
   if (command === "ready-invoicing") return readyInvoicing(argument!, process.argv[4]!);
   if (command === "forget-fortnox") return forgetFortnox(argument!);
   if (command === "fortnox-night-workspace") return fortnoxNightWorkspace(argument!);

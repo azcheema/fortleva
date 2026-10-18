@@ -475,7 +475,7 @@ describe("copying a task (copyItem)", () => {
     const read = (id: string, clientId: string) =>
       withTenant(f.tenantId, { type: "member", id: f.seats.owner.memberId }, async (tx) => {
         const projectId = (await tx.workItem.findFirstOrThrow({ where: { id }, select: { projectId: true } })).projectId;
-        return nameCopyRefs(tx, f.tenantId, projectId, await readItemActivity(tx, f.tenantId, id, clientId, null));
+        return nameCopyRefs(tx, f.tenantId, projectId, await readItemActivity(tx, f.tenantId, id, clientId, projectId, null));
       });
 
     const onSource = (await read(source.id, acme)).rows.filter((r) => r.field === "copiedTo");

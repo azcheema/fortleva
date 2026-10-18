@@ -269,6 +269,12 @@ export type DomainErrorCode =
   // Copying a task (slice 129 — src/modules/work/copy.ts, C106 (a), (b)).
   | "COPY_TOO_BIG" // with its subtasks: more than 100 tasks under it, or more than 2 MiB of descriptions together
   | "COPY_BUSY" // the project's queue or a row stayed locked past the wait, three times
+  // Moving a task (slice 131 — src/modules/work/move.ts, C108).
+  | "MOVE_TOO_BIG" // more than 100 tasks under it, or more than 5 000 time entries on them
+  | "MOVE_IN_TRIAGE" // a client's request in it still waits in Triage — accept or decline it first
+  | "MOVE_HOURS_BILLED" // an hour on it is on an invoice, billed elsewhere, written off or locked: that record keeps its project
+  | "MOVE_SOURCE_TAKEN" // the other project already has a live task imported from the same source row
+  | "MOVE_BUSY" // a project's queue or a row stayed locked past the wait, three times
   // The stage editors (slice 123 — src/modules/work/stage-editor.ts, C99 (a);
   // the rules are src/lib/stage-rules.ts).
   | "STAGE_NAME_TAKEN" // another stage of this project (or the default set) has that name, ignoring case

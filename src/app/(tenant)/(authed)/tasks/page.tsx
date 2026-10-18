@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ListTodoIcon } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
@@ -28,7 +29,7 @@ import {
 } from "@/lib/task-list-plan";
 import { cn } from "@/lib/utils";
 import { requireTenantContext } from "@/members/tenant-context";
-import { listAllTasks, resolveRowState } from "@/modules/work";
+import { followMovedKey, listAllTasks, resolveRowState } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 import { getProjectByKey, type ProjectDetail } from "@/projects/service";
 
@@ -134,6 +135,12 @@ export default async function TasksPage({
     peekProject && params.item
       ? await loadPanelItem(ctx, peekProject.id, params.item.number, listHref, (seedKey) => tStates(seedKey))
       : null;
+  // A task MOVED (slice 131, C108 (c)): its old key opens it under its new
+  // one — for a reader who can open it there; anyone else gets no peek.
+  if (params.item && peekProject && !peekItem) {
+    const moved = await followMovedKey(ctx, peekProject.id, params.item.number);
+    if (moved) redirect(tasksHref({ ...listBase, item: { projectKey: moved.projectKey, number: moved.number } }));
+  }
   const applied: TaskListParams = { ...listBase, item: peekItem && params.item ? params.item : null };
   const peekTimer = peekItem && peekProject ? await loadPanelTimer(ctx, peekProject) : null;
   let peekDocuments: DocumentListItem[] = [];

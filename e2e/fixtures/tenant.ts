@@ -349,6 +349,13 @@ export async function tasksWorkspace(tenantId: string): Promise<TasksWorkspace> 
   return runCli<TasksWorkspace>(["tasks-workspace", tenantId]);
 }
 
+/** `move-task.spec.ts`'s client (slice 131): two projects, a task with one subtask in the first. */
+export type MoveWorkspace = { fromKey: string; toKey: string; toName: string; number: number; title: string };
+
+export async function moveWorkspace(tenantId: string): Promise<MoveWorkspace> {
+  return runCli<MoveWorkspace>(["move-workspace", tenantId]);
+}
+
 /** A task's repeat planted due — its next day yesterday in UTC (slice 127, `repeat.spec.ts`). */
 export async function repeatDue(tenantId: string, projectKey: string, number: number): Promise<{ nextOn: string }> {
   return runCli<{ nextOn: string }>(["repeat-due", tenantId, projectKey, String(number)]);

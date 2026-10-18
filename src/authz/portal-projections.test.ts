@@ -154,6 +154,10 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   "repeatRhythm",
   "workItemRepeat",
   "workItemRepeatItem",
+  // Slice 131: a moved task's old keys — class A, the agency's bookkeeping.
+  "aliases",
+  "workItemAlias",
+  "workItemAliases",
 ] as const;
 
 const SRC = join(__dirname, "..");
@@ -497,6 +501,10 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "repeatRhythm",
       "workItemRepeat",
       "workItemRepeatItem",
+      // Slice 131: a moved task's old keys.
+      "aliases",
+      "workItemAlias",
+      "workItemAliases",
     ]);
   });
 
@@ -593,6 +601,9 @@ describe("portal projections never touch INTERNAL-only columns", () => {
         // Slice 127/127b: a task's repeat, as a relation a select would name.
         "repeatHeld",
         "repeatMember",
+        // Slice 131: a moved task's old keys, as the relations a select would name.
+        "aliases",
+        "workItemAliases",
       ].sort(),
     );
     // THE PER-MODEL EXEMPTIONS ARE PINNED TOO, for the same reason: a
@@ -813,6 +824,10 @@ const PORTAL_NEVER_SELECTED: ReadonlySet<string> = new Set([
   // `portal_deny` does not apply) — the review's L1.
   "repeatHeld",
   "repeatMember",
+  // Slice 131: a moved task's old keys, on the same tier (the security
+  // review's NIT).
+  "aliases",
+  "workItemAliases",
 ]);
 
 /**

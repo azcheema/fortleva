@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
+import { followMovedKey } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../../data";
@@ -58,7 +59,13 @@ export default async function ProjectItemPage({
   const panel = await loadPanelItem(ctx, project.id, n!, self, (seedKey) => tStates(seedKey), {
     activityBefore: before,
   });
-  if (!panel) notFound();
+  if (!panel) {
+    // A task MOVED from here (slice 131, C108 (c)): its old key still finds
+    // it — redirected only for a reader who can open it where it is now.
+    const moved = await followMovedKey(ctx, project.id, n!);
+    if (moved) redirect(`/projects/${moved.projectKey}/items/${moved.number}`);
+    notFound();
+  }
   const { item, states, caps, members, contacts, milestones, labels, activity, subtasks, comments, repeat } = panel;
 
   const [documents, prefs, timer] = await Promise.all([

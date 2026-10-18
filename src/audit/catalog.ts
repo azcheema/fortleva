@@ -402,6 +402,14 @@ export const AUDIT_EVENTS = {
   // ticked), with `labelsLeftOff` / `assigneesLeftOff` when another project
   // could not take them; on a copied subtask `copyOf`. Always
   // `visibility: "INTERNAL"`.
+  // Slice 131 (C108): a task MOVED to another project of its client — one
+  // row per moved task, as the member: `fromProjectId`/`fromNumber` and
+  // `toProjectId`/`toNumber`; on the task the member moved, the counts too —
+  // `subtasks`, `entries` and `seconds` (its hours, which moved with it and
+  // were re-priced for the new project: this row is their record, not one
+  // `time_entry.*` per hour), `labelsLeftOff`, `assigneesLeftOff`,
+  // `milestoneCleared`; on a task under it, `with` (the moved task's id).
+  "work_item.moved": TENANT,
   "import_job.started": TENANT,
   "import_job.finished": TENANT,
   "import_job.undone": TENANT,

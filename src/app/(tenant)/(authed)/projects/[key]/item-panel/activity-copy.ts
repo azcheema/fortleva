@@ -95,6 +95,8 @@ export type ActivitySentence =
   | { key: "copiedTo"; task: string }
   | { key: "copiedFromElsewhere" }
   | { key: "copiedToElsewhere" }
+  | { key: "movedFrom"; task: string }
+  | { key: "movedFromElsewhere" }
   | { key: "fieldChanged"; field: string };
 
 export type ActivityRow = Pick<
@@ -280,6 +282,14 @@ export function activitySentence(row: ActivityRow, look: ActivityLookups): Activ
       if (!row.newRef) return fallback;
       const k = taskKey(row.newRefName);
       return k === null ? { key: "copiedToElsewhere" } : { key: "copiedTo", task: k };
+    }
+    // A move (slice 131): the task's old KEY, named only when the read could
+    // resolve its old project for this reader (`nameMoveRefs`), else
+    // "another project" — a reader of where it is now never learns where it was.
+    case "moved": {
+      if (!row.oldRef) return fallback;
+      const k = taskKey(row.oldRefName);
+      return k === null ? { key: "movedFromElsewhere" } : { key: "movedFrom", task: k };
     }
     default:
       return fallback;

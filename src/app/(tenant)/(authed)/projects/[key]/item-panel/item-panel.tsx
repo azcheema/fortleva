@@ -30,6 +30,7 @@ import { ActivitySection } from "./activity-section";
 import { AssigneeField } from "./assignee-field";
 import { CommentsSection } from "./comments-section";
 import { CopyTaskButton } from "./copy-button";
+import { MoveTaskButton } from "./move-button";
 import { DescriptionField } from "./description-field";
 import { DueDateField } from "./due-date-field";
 import { EstimateField } from "./estimate-field";
@@ -219,6 +220,13 @@ export async function ItemPanel({
     canCreate && canEdit ? (
       <CopyTaskButton itemId={item.id} itemNumber={item.number} projectKey={projectKey} surface={surface} returnTo={returnTo} />
     ) : null;
+  // Slice 131 (C108): move it to another project of its client — the same
+  // member, the same two codes (a move takes a task out of one project and
+  // creates it in another).
+  const moveButton =
+    canCreate && canEdit ? (
+      <MoveTaskButton itemId={item.id} itemNumber={item.number} projectKey={projectKey} surface={surface} returnTo={returnTo} />
+    ) : null;
   const fullPageLink =
     variant === "peek" ? (
       <Button asChild variant="ghost" size="sm" className="ms-auto">
@@ -234,11 +242,12 @@ export async function ItemPanel({
       <span className="num-id text-xs text-muted-foreground">{itemKey}</span>
       {title}
       {variant === "peek" ? <SheetDescription className="sr-only">{t("sheetDescription")}</SheetDescription> : null}
-      {archivedNote || timerControl || copyButton || fullPageLink ? (
+      {archivedNote || timerControl || copyButton || moveButton || fullPageLink ? (
         <div className="flex flex-wrap items-center gap-2">
           {archivedNote}
           {timerControl}
           {copyButton}
+          {moveButton}
           {fullPageLink}
         </div>
       ) : null}

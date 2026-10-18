@@ -1,5 +1,6 @@
 import { ListIcon } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { EmptyState, SectionCard } from "@/components/semantic";
@@ -8,7 +9,7 @@ import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listHrefOf, peekHrefOf } from "@/lib/work-view";
-import { listItems, resolveStateNames } from "@/modules/work";
+import { followMovedKey, listItems, resolveStateNames } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
@@ -86,6 +87,14 @@ export default async function ProjectBacklogPage({
   // receives plain strings. A state still wearing its seeded default
   // renders in the VIEWER's language; a renamed one renders its tenant
   // text, forever (DATA_MODEL §6.14).
+  // A task MOVED from this project (slice 131, C108 (c)): its old key in
+  // `?item=` — the address every task e-mail carries — opens it over its
+  // new project's backlog, for a reader who can open it there; anyone
+  // else gets no peek, as for any unknown number.
+  if (peekNumber !== null && !peekItem) {
+    const moved = await followMovedKey(ctx, project.id, peekNumber);
+    if (moved) redirect(`/projects/${moved.projectKey}/backlog?item=${moved.projectKey}-${moved.number}`);
+  }
   const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
   let peekDocuments: DocumentListItem[] = [];
   if (peekItem && project.caps.viewDocuments) {

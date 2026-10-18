@@ -2167,7 +2167,12 @@
     "TEMPLATE_TOO_LARGE": "Projektet är för stort för en mall. En mall rymmer högst 1 000 uppgifter, 100 milstolpar och 500 etiketter, och deras text tillsammans högst ungefär 3 MB.",
     "TEMPLATE_EMPTY": "Projektet har inga uppgifter eller milstolpar att spara.",
     "TEMPLATE_INVALID": "Den här mallen går inte att använda. Spara den igen från ett projekt.",
-    "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande."
+    "STAGE_DEFAULT_GATED": "Nya uppgifter kan inte börja i ett steg som kräver godkännande.",
+    "MOVE_TOO_BIG": "Uppgiften är för stor för att flyttas: högst 100 uppgifter under den och högst 5 000 tidsposter på dem.",
+    "MOVE_IN_TRIAGE": "En kundförfrågan i uppgiften väntar fortfarande i Triage. Ta emot eller avböj den först och flytta sedan uppgiften.",
+    "MOVE_HOURS_BILLED": "En del av tiden på uppgiften finns redan på en faktura, är fakturerad på annat håll eller markerad att inte faktureras, så den kan inte flyttas: de tidsposterna stannar i sitt projekt. Kopiera uppgiften i stället.",
+    "MOVE_SOURCE_TAKEN": "Det andra projektet har redan en uppgift som importerats från samma rad i samma fil, så den här kan inte flyttas dit.",
+    "MOVE_BUSY": "Någon annan ändrade ett av projekten i samma stund, så inget flyttades. Försök igen om en liten stund."
   },
   "assignments": {
     "title": "Team",
@@ -2596,6 +2601,39 @@
       "copiedLeftOff": "Kopierad som {key}. Vissa etiketter eller personer passade inte i {project} och togs inte med.",
       "failed": "Uppgiften kunde inte kopieras. Försök igen.",
       "noProjects": "Det finns inget projekt du kan kopiera till."
+    },
+    "move": {
+      "action": "Flytta…",
+      "title": "Flytta {key}",
+      "description": "Flytta uppgiften till ett annat projekt hos samma kund. Kommentarer, filer, historik och tid följer med.",
+      "projectLabel": "Projekt",
+      "projectOption": "{key} · {name}",
+      "chooseProject": "Välj ett projekt…",
+      "facts": {
+        "subtasks": "{count, plural, one {# uppgift under den flyttas också.} other {# uppgifter under den flyttas också.}}",
+        "hours": "Tiden flyttas också ({hours} h), till det nya projektets priser.",
+        "newNumber": "Den får ett nytt nummer där. Länkar till {key} fortsätter att fungera.",
+        "milestone": "Dess milstolpe ({name}) hör till det här projektet och tas bort.",
+        "labels": "Etiketter som bara hör till det här projektet följer inte med: {labels}.",
+        "people": "Tilldelas ingen i {key}, eftersom de inte kan arbeta där: {people}.",
+        "sharedOn": "Delad med kunden: de kommer att se den i {project}.",
+        "sharedOff": "Delad med kunden: de ser den inte i {project} så länge projektets portal är avstängd.",
+        "binned": "{count, plural, one {# borttagen uppgift under den flyttas också.} other {# borttagna uppgifter under den flyttas också.}}",
+        "hoursNoCount": "Tiden flyttas också, till det nya projektets priser.",
+        "hoursShared": "Kunden ser timmar i ett av projekten: summorna ändras, även för tidigare månader.",
+        "hoursOwn": "Tiden flyttas också, till det nya projektets priser – {hours} h av den är din."
+      },
+      "refuse": {
+        "tooBig": "Uppgiften är för stor för att flyttas: högst 100 uppgifter under den och högst 5 000 tidsposter på dem.",
+        "inTriage": "En kundförfrågan i den väntar fortfarande i Triage. Ta emot eller avböj den först.",
+        "hoursBilled": "En del av tiden finns redan på en faktura, är fakturerad på annat håll eller markerad att inte faktureras, så den stannar i det här projektet. Kopiera uppgiften i stället.",
+        "shared": "Den är delad med kunden, och bara den som får dela uppgifter kan flytta delat arbete.",
+        "othersHours": "Den har kollegors tid, och bara den som får ändra andras tid kan flytta den."
+      },
+      "noProjects": "Kunden har inget annat projekt som du kan flytta den till.",
+      "submit": "Flytta uppgift",
+      "moved": "Flyttad till {key}",
+      "failed": "Uppgiften kunde inte flyttas. Försök igen."
     },
     "status": {
       "PLANNED": "Planerat",
@@ -3086,7 +3124,8 @@
         "confirmDelete": "Ta bort uppgiften?",
         "deleteAnswered": "Ditt svar tillhör kunden — arkivera uppgiften i stället",
         "deleteAnsweredArchived": "Ditt svar tillhör kunden",
-        "copy": "Kopiera…"
+        "copy": "Kopiera…",
+        "move": "Flytta…"
       },
       "priorityLabel": "Prioritet",
       "dueLabel": "Förfallodatum",
@@ -3731,7 +3770,9 @@
         "copiedFrom": "kopierade den här från {task}",
         "copiedTo": "gjorde en kopia av den här, {task}",
         "copiedFromElsewhere": "kopierade den här från en uppgift i ett annat projekt",
-        "copiedToElsewhere": "gjorde en kopia av den här i ett annat projekt"
+        "copiedToElsewhere": "gjorde en kopia av den här i ett annat projekt",
+        "movedFrom": "flyttade den hit från {task}",
+        "movedFromElsewhere": "flyttade den hit från ett annat projekt"
       },
       "timer": {
         "start": "Starta timer",

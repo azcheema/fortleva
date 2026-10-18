@@ -48,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VisibilityBadge, visibilityRowCue } from "@/components/visibility-badge";
 import { CopyTaskDialog, type CopySubject } from "@/components/work-view/copy-task-dialog";
+import { MoveTaskDialog, type MoveSubject } from "@/components/work-view/move-task-dialog";
 import { LabelChips } from "@/components/work-view/label-chips";
 import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
 import { isActionRedirect } from "@/lib/action-redirect";
@@ -331,6 +332,8 @@ export function Board({
   // "Copy…" from a card's menu (slice 129, C106): focus goes back to the
   // card when its dialog closes, by the move picker's road.
   const [copying, setCopying] = useState<CopySubject | null>(null);
+  // Slice 131 (C108): the card being moved to another project of its client.
+  const [moving, setMoving] = useState<MoveSubject | null>(null);
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const epicIds = useMemo(() => epicIdsOf(items), [items]);
   const firstCardId = items.find((i) => !(groupBy === "epic" && i.type === "EPIC"))?.id ?? null;
@@ -391,7 +394,7 @@ export function Board({
   // `keymap.spec.ts` test fails with this dependency removed.)
   useEffect(() => {
     const pending = pendingFocusRef.current;
-    if (!pending || picker || endOpen || copying) return;
+    if (!pending || picker || endOpen || copying || moving) return;
     if (pending.ifIdle) {
       const active = document.activeElement;
       if (active !== null && active !== document.body) {
@@ -405,7 +408,7 @@ export function Board({
       pendingFocusRef.current = null;
       el.focus();
     }
-  }, [picker, endOpen, copying, focusedId, items]);
+  }, [picker, endOpen, copying, moving, focusedId, items]);
   /** The card menu's C29b item for this card, or null where it has none. */
   const endRequestFor = (item: WorkItem): RowAction | null =>
     data.caps.canEndRequest && isEndableRequest(item) ? endRequest.rowActionFor(item) : null;
@@ -624,6 +627,7 @@ export function Board({
               onFocusCard={onCardFocus}
               onOpenPicker={setPicker}
               onCopy={data.caps.canCreate ? (item) => setCopying({ id: item.id, number: item.number, projectKey }) : null}
+              onMove={data.caps.canCreate && data.caps.canEdit ? (item) => setMoving({ id: item.id, number: item.number, projectKey }) : null}
               endRequestFor={endRequestFor}
               applyOptimistic={applyOptimistic}
               startTransition={startTransition}
@@ -669,6 +673,17 @@ export function Board({
           setCopying(null);
         }}
       />
+      <MoveTaskDialog
+        subject={moving}
+        actionSurface="board-peek"
+        landing={{ surface: "board", returnTo: `/projects/${projectKey}/board?${boardSearch.toString()}` }}
+        onClosed={() => {
+          // Cancelled: back to its card. Moved: the card is gone, and the
+          // task's own page in its new project is opening.
+          if (moving) focusCard(moving.id);
+          setMoving(null);
+        }}
+      />
       {taskTimer.notice}
     </>
   );
@@ -706,6 +721,8 @@ function BoardLane(props: {
   onOpenPicker: (item: WorkItem) => void;
   /** "Copy…" on a card (slice 129) — null for a member who may not create tasks. REQUIRED, null included. */
   onCopy: ((item: WorkItem) => void) | null;
+  /** "Move…" on a card (slice 131) — null for a member who may not create AND edit tasks. REQUIRED, null included. */
+  onMove: ((item: WorkItem) => void) | null;
   /** A card's "Cancel and reply…" menu item, or null where it has none (`Board`'s `endRequestFor`). */
   endRequestFor: (item: WorkItem) => RowAction | null;
   applyOptimistic: (a: OptimisticAction) => void;
@@ -801,6 +818,7 @@ function BoardColumn(props: {
   onFocusCard: (id: string) => void;
   onOpenPicker: (item: WorkItem) => void;
   onCopy: ((item: WorkItem) => void) | null;
+  onMove: ((item: WorkItem) => void) | null;
   endRequestFor: (item: WorkItem) => RowAction | null;
   applyOptimistic: (a: OptimisticAction) => void;
   startTransition: (fn: () => Promise<void>) => void;
@@ -906,6 +924,7 @@ function BoardColumn(props: {
             onFocus={() => props.onFocusCard(item.id)}
             onOpenPicker={() => props.onOpenPicker(item)}
             onCopy={props.onCopy ? () => props.onCopy?.(item) : null}
+            onMove={props.onMove ? () => props.onMove?.(item) : null}
             endAction={props.endRequestFor(item)}
             startTransition={props.startTransition}
             onMutate={props.onMutate}
@@ -1022,6 +1041,7 @@ function BoardCard({
   onFocus,
   onOpenPicker,
   onCopy,
+  onMove,
   endAction,
   startTransition,
   onMutate,
@@ -1067,6 +1087,8 @@ function BoardCard({
   onOpenPicker: () => void;
   /** "Copy…" (slice 129, C106) — null for a member who may not create tasks. REQUIRED, null included. */
   onCopy: (() => void) | null;
+  /** "Move…" (slice 131, C108) — null for a member who may not create AND edit tasks. REQUIRED, null included. */
+  onMove: (() => void) | null;
   /**
    * "Cancel and reply…" (C29b) — or "Decline…" in TRIAGE — on a live
    * client request, for a member who may end one; null everywhere else.
@@ -1202,6 +1224,8 @@ function BoardCard({
     ...(endAction ? [endAction] : []),
     // Slice 129 (C106): copy it, here or into another project.
     ...(onCopy && item.number > 0 ? [{ key: "copy", label: tBacklog("actions.copy"), onSelect: onCopy }] : []),
+    // Slice 131 (C108): move it to another project of its client.
+    ...(onMove && item.number > 0 ? [{ key: "move", label: tBacklog("actions.move"), onSelect: onMove }] : []),
     { key: "archive", label: tBacklog("actions.archive"), onSelect: () => run(() => setItemArchivedAction(item.id, projectKey, true)) },
     ...(canDelete
       ? [

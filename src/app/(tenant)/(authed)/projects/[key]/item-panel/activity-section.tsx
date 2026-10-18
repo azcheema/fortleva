@@ -5,6 +5,7 @@ import {
   CopyIcon,
   FileTextIcon,
   FlagIcon,
+  FolderInputIcon,
   type LucideIcon,
   MessageSquareIcon,
   PencilIcon,
@@ -96,6 +97,8 @@ const FIELD_ICON: Record<string, LucideIcon> = {
   // A member's copy (slice 129) — both ends of it.
   copiedFrom: CopyIcon,
   copiedTo: CopyIcon,
+  // Slice 131: a move between projects — the same glyph as Move… itself.
+  moved: FolderInputIcon,
 };
 const GLYPH = "size-3";
 
@@ -212,7 +215,7 @@ export async function ActivitySection({
     task: (n) => `${projectKey}-${n}`,
   };
 
-  // Thirty-five sentences in seven shapes — next-intl types the ICU arguments
+  // The sentences, in seven shapes — next-intl types the ICU arguments
   // per key, and every key in a group takes the same ones.
   const say = (s: ActivitySentence): string => {
     switch (s.key) {
@@ -226,6 +229,7 @@ export async function ActivitySection({
       case "repeatStopped":
       case "copiedFromElsewhere":
       case "copiedToElsewhere":
+      case "movedFromElsewhere":
         return t(s.key);
       case "repeatSet":
       case "repeatChanged":
@@ -234,6 +238,7 @@ export async function ActivitySection({
       case "repeatCopied":
       case "copiedFrom":
       case "copiedTo":
+      case "movedFrom":
         return t(s.key, { task: s.task });
       case "titleChanged":
       case "priorityChanged":

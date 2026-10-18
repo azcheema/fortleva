@@ -58,6 +58,10 @@ const TOKENS: DbErrorTokens = [
   // …and a split whose invoice was credited in full between its reads.
   ["HOURS_CHANGED", "HOURS_CHANGED"],
   ["SERVICE_CLIENT_MISMATCH", "SERVICE_CLIENT_MISMATCH"],
+  // `time_entry_scope_guard`: an hour joining a task that a MOVE just took to
+  // another project (slice 131 — the guard waits for the move, then refuses).
+  // The service resolves the task's project first; this is the race's belt.
+  ["work item must belong to the entry", "TARGET_MISMATCH"],
   ["RATE_CARD_IMMUTABLE", "RATE_CARD_IMMUTABLE"],
   ["REPORT_IMMUTABLE", "REPORT_IMMUTABLE"],
   ["BREAK_OUT_OF_BOUNDS", "BREAK_OUT_OF_BOUNDS"],

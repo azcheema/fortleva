@@ -8,7 +8,7 @@ import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { softDeleteDocumentsInTx } from "@/documents/service";
 import { requireAccess } from "@/entitlements/resolver";
 import { fail } from "@/lib/domain-error";
-import { nameCopyRefs, readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
+import { nameCopyRefs, nameMoveRefs, readItemActivity, writeActivity, type ItemActivityPage } from "./activity";
 import { readItemComments, type ItemComments } from "./comments";
 import { readItemLabels, readLabelsByItem, type ItemLabels, type LabelEntry } from "./labels";
 import { descriptionToken } from "./description-token";
@@ -848,7 +848,7 @@ export async function getItemDetail(
       // the same transaction and behind the same scope check as the item
       // — never a second entry point that could answer for an item this
       // read refused.
-      readItemActivity(tx, ctx.tenantId, row!.id, row!.clientId, opts.activityBefore),
+      readItemActivity(tx, ctx.tenantId, row!.id, row!.clientId, projectId, opts.activityBefore),
       // The Subtasks section's rows (subtasks.ts), under the same rule. A
       // level with no children (`childTypeOf`: a SUBTASK) is skipped
       // rather than read to return nothing.
@@ -858,7 +858,11 @@ export async function getItemDetail(
     ]);
     // A copy's other end, named only within this project (slice 129) — in
     // SEQUENCE after the batch, never a leg of it (the one-connection trap).
-    const activity = await nameCopyRefs(tx, ctx.tenantId, projectId, activityPage);
+    const activity = await nameMoveRefs(
+      tx,
+      ctx,
+      await nameCopyRefs(tx, ctx.tenantId, projectId, activityPage),
+    );
     const canEdit = held.has("work_item:edit");
     // The `A` picker's rows — read only for a member who can edit: a
     // viewer's panel renders the assignee as text and never lists anyone.

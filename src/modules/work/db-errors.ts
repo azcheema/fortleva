@@ -132,3 +132,15 @@ export const { guarded: guardedRestore } = dbErrorMapper([
   ["RESTORE_PARENT_GONE", "BIN_PARENT_DELETED"],
   ["work_item_source_live_key", "BIN_SOURCE_TWIN"],
 ]);
+
+/**
+ * A move's transaction (slice 131, `move.ts`) — the module's table plus the
+ * one UNIQUE a move can meet that its own locks do not order: an import
+ * landing the same source row in the target after the move's pre-check (the
+ * import's partial unique index). Matched BY NAME, so no other constraint is
+ * ever told as this (the re-check's NIT); the service asks first.
+ */
+export const { guarded: guardedMove } = dbErrorMapper([
+  ...WORK_TOKENS,
+  ["work_item_source_live_key", "MOVE_SOURCE_TAKEN"],
+]);

@@ -22,7 +22,9 @@ import {
   makeItemPrivate,
   makePrivateWithChildren,
   moveItem,
+  moveItemToProject,
   previewMakePrivate,
+  readMoveFacts,
   readCopySource,
   restoreDeletedItem,
   setItemArchived,
@@ -40,6 +42,8 @@ import {
   type LabelsCommitted,
   type MilestoneAssigned,
   type MovedItem,
+  type MoveDone,
+  type MoveFacts,
   type ItemPrivateCommitted,
   type MakePrivateResult,
   type PrivacyPreview,
@@ -705,6 +709,41 @@ export async function copyItemAction(input: z.input<typeof CopyTask>): Promise<A
     // The source's history gained a row; the chosen project gained tasks.
     revalidate(projectKey);
     if (r.value.projectKey !== projectKey) revalidate(r.value.projectKey);
+  }
+  return r;
+}
+
+/* -------------------------------------------------------------- *
+ * MOVE A TASK (slice 131, founder decision C108): the Move dialog's read and
+ * its verb. `Target` names the task and the surface the dialog was opened on
+ * (the step-up's return address); the service decides everything else —
+ * view + create + edit, both projects in scope and of one client, neither
+ * archived, the refusals.
+ * -------------------------------------------------------------- */
+
+const MoveFactsInput = Target.extend({ projectId: uuid.nullable() }).strict();
+const MoveTask = Target.extend({ projectId: uuid }).strict();
+
+export async function moveFactsAction(input: z.input<typeof MoveFactsInput>): Promise<ActionResult<MoveFacts>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.move");
+  const parsed = MoveFactsInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: t("failed") };
+  const { itemId, projectKey, itemNumber, surface, projectId } = parsed.data;
+  return runAction(itemReturnTo(surface, projectKey, itemNumber), () => readMoveFacts(ctx, itemId, projectId));
+}
+
+export async function moveTaskToProjectAction(input: z.input<typeof MoveTask>): Promise<ActionResult<MoveDone>> {
+  const ctx = await ctxOf();
+  const t = await getTranslations("projects.move");
+  const parsed = MoveTask.safeParse(input);
+  if (!parsed.success) return { ok: false, message: t("failed") };
+  const { itemId, projectKey, itemNumber, surface, projectId } = parsed.data;
+  const r = await runAction(itemReturnTo(surface, projectKey, itemNumber), () => moveItemToProject(ctx, itemId, projectId));
+  if (r.ok) {
+    // The task left one project and arrived in the other.
+    revalidate(projectKey);
+    revalidate(r.value.projectKey);
   }
   return r;
 }

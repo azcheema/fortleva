@@ -30,7 +30,7 @@ Supporting models (this doc's additions, still canonical): `Session, Account, Ve
 
 **Amended 2026-08-16 (work-management plan).** Added canonical names, by module:
 
-- **Work** (`work`, Phase 2W — §6.14): `WorkItem` (**UI word: "Task"**; levels Epic / Task / Subtask via `WorkItem.type`), `WorkflowState`, `WorkflowPreset`, `WorkItemActivity`, `Comment` (polymorphic; **replaces `IssueComment`**), `Mention`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `ProjectTemplate`, `WorkItemRepeat` + `WorkItemRepeatItem` *(slice 127 — repeating tasks, §6.14's note)*.
+- **Work** (`work`, Phase 2W — §6.14): `WorkItem` (**UI word: "Task"**; levels Epic / Task / Subtask via `WorkItem.type`), `WorkflowState`, `WorkflowPreset`, `WorkItemActivity`, `Comment` (polymorphic; **replaces `IssueComment`**), `Mention`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `ProjectTemplate`, `WorkItemRepeat` + `WorkItemRepeatItem` *(slice 127 — repeating tasks, §6.14's note)*, `WorkItemAlias` *(slice 131 — a moved task's old key, §6.14's note)*.
 - **Time** (`time`, Phase 2T — §6.15): `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `ProjectTimeSummary`, `StaffNotice`, `StaffNoticeAcknowledgment`, `Shift`, `ShiftBreak`, `TimeReport`, `WorkType` *(last four added 2026-08-20 — founder time-tracking extensions)*; Phase 4: `RoundingRule`, `InvoiceLineTimeEntry`, `RetainerPlan`, `RetainerPeriod`, `HourBankTransaction`.
 - **Progress updates** (rides on `work`, Phase 3 — §6.16): `ProjectUpdate`, `ProjectUpdateInternalSnapshot`; Phase 5: `ProjectUpdateSchedule`, `ProjectUpdateTemplate`.
 - **Vault & assets** (`vault`, Phase 3V — §6.17): `TenantKey` (Phase 1b, core), `CredentialItem`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ClientAsset`, `ExpirationReminderSent`; later: `AssetCheck`.
@@ -92,7 +92,7 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 
 | Registry subclass (`src/db/model-registry.ts`) | Class | Required columns / policy | Models |
 |---|---|---|---|
-| `principalScoped` | A | `portal_deny`; **never a `visibility` column** — a class-A table carrying one is a posture-test failure (it invites a later "just gate it" shortcut). | all class-A models above + `WorkflowState`, `WorkflowPreset`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `Mention`, `ProjectTemplate`, `WorkItemRepeat`, `WorkItemRepeatItem`, `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `StaffNotice`, `StaffNoticeAcknowledgment`, `RoundingRule`, `ProjectUpdateInternalSnapshot`, `TenantKey`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ExpirationReminderSent`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `PushSubscription` |
+| `principalScoped` | A | `portal_deny`; **never a `visibility` column** — a class-A table carrying one is a posture-test failure (it invites a later "just gate it" shortcut). | all class-A models above + `WorkflowState`, `WorkflowPreset`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `Mention`, `ProjectTemplate`, `WorkItemRepeat`, `WorkItemRepeatItem`, `WorkItemAlias`, `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `StaffNotice`, `StaffNoticeAcknowledgment`, `RoundingRule`, `ProjectUpdateInternalSnapshot`, `TenantKey`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ExpirationReminderSent`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `PushSubscription` |
 | `clientScoped` | B | `client_id`, `visibility`, RESTRICTIVE `portal_gate` in the two-term form `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE'`. | `Client`, `Contact` (structural — client match only), `Document` without `projectId`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, ~~`PerformanceReport`~~ *(slice 118: `WebsiteSpeedWeek` is projectScoped, below)*, `ContinuityBox`, `ContinuityOpenRequest`, `CredentialItem`, `ClientAsset` |
 | `projectScoped` | B | `client_id`, `visibility`, **`portal_enabled boolean NOT NULL DEFAULT false`** (denormalised from `Project.portalEnabled`, maintained by an `AFTER UPDATE OF portal_enabled ON project` trigger fanning out to every projectScoped table in the same transaction, and set on INSERT by a BEFORE trigger reading the parent project — *since slice 74, 2026-09-28, that trigger only TRIES the project's switch gate and writes FALSE while a switch is in flight, re-derived at the writer's commit or by the switch's reconcile (TENANCY.md §7.2), so the copy can lag the switch toward FALSE — transiently, except the recorded residuals (the migration header's list: rows left FALSE until the project is next switched) — and never toward TRUE; before it, a row written during a DISABLE kept `true`*), RESTRICTIVE `portal_gate` in the **three-term form** `portal_gate = client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND portal_enabled`. | `Project` (its own row: `client_id` + `portal_enabled` — a project row is a structural row, so the visibility term is replaced by `portal_enabled`), `Milestone`, `ProjectVersion`, `Service`, `Document` with `projectId`, `WorkItem`, `WorkItemActivity`, `Comment`, `ProjectUpdate`, `ProjectTimeSummary`, `search_index` rows with `project_id` |
 | (special) | — | `Notification`: contact rows readable/updatable (`read_at`, `archived_at` only) under `receiver_type='CONTACT' AND receiver_id = app.principal_id AND client_id = app.client_id`. | `Notification` |
@@ -3574,6 +3574,36 @@ model Mention {
 /// hand-over — and moves the series onto it. Nesting is refused
 /// (`REPEAT_NESTED`); no copies while the holder is deleted or the project
 /// is paused, completed, cancelled or archived, or its client archived.
+///
+/// MOVING A TASK, and WorkItemAlias (BUILT 2026-10-18, slice 131, founder
+/// decision C108 (a)–(c); migration 20261101090000; design
+/// docs/research/2026-10-17-slice-131-move-a-task-design.md). A task's
+/// project CAN change now — only through `moveItemToProject`
+/// (`modules/work/move.ts`), which sets the transaction-local
+/// `app.work_item_move` flag the replaced `work_item_no_move` asks for, and
+/// only to a project of the SAME client (the trigger reads the target's
+/// client); `client_id` never changes, flag or not. `work_item_parent_guard`
+/// waives WORK_TREE_REPARENT under the same flag only for a row taken to the
+/// TOP (the moved task leaves its parent; its children follow it). The move
+/// carries the task and every row under it (deleted ones too), their
+/// comments (and those on their attached documents and file versions), the
+/// documents, the history rows and the time entries (re-priced for the new
+/// project; refused while any is billed, billed elsewhere, written off or
+/// locked) — every UPDATE naming `project_id`, so `stamp_portal_enabled`
+/// re-derives each row's stamp from the target. A moved task gets a new
+/// number, a rank at the bottom, a stage by name / seed / kind / default, no
+/// milestone and no fixed-in version; project-only labels are dropped.
+/// The review round's forward migration (20261101100000): under the same
+/// flag `document_anchor_guard` lets a BINNED task's file follow it (its
+/// anchor is soft-deleted but already in the new project); the time entry
+/// scope guard reads the task `FOR KEY SHARE` so an hour saved during a move
+/// waits and is refused; the re-parent waiver also needs the project to
+/// change in the same statement.
+/// `work_item_alias` (class A, tenant_isolation + portal_deny): PK
+/// (tenant, project, number) → `work_item_id`, one row per moved task for its
+/// OLD key, cascading with the project and with the task; the item page and
+/// the board / backlog / Tasks peeks follow it (`followMovedKey`) only for a
+/// reader who can open the task where it is now.
 ///
 /// ProjectTemplate — "pick a template" is the ONLY process picker in the
 /// product (UI.md rule 13). Tenant-owned rows only (no nullable tenantId —

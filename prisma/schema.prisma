@@ -321,6 +321,7 @@ model Tenant {
   importJobItems                 ImportJobItem[]
   workItemRepeats                WorkItemRepeat[] // slice 127
   workItemRepeatItems            WorkItemRepeatItem[] // slice 127
+  workItemAliases                WorkItemAlias[] // slice 131
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -1081,6 +1082,8 @@ model Project {
   invoices       Invoice[]
   // Phase 6 slice 121 — imports:
   importJobs     ImportJob[]
+  // Slice 131 — the old keys of tasks moved OUT of this project:
+  workItemAliases WorkItemAlias[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -2860,6 +2863,7 @@ model WorkItem {
   importWrites    ImportJobItem[] // Phase 6 slice 121
   repeatHeld      WorkItemRepeat? // slice 127 — the series whose next copy is made from this task
   repeatMember    WorkItemRepeatItem? // slice 127 — the series this task belongs to
+  aliases         WorkItemAlias[] // slice 131 — the keys it had before it was moved
 
   @@unique([tenantId, projectId, number]) // human key ACME-12
   @@unique([tenantId, projectId, rank]) // one position per item (retry-with-jitter)
@@ -3014,6 +3018,30 @@ model WorkItemRepeatItem {
   @@id([tenantId, workItemId])
   @@unique([tenantId, repeatId, madeFor])
   @@map("work_item_repeat_item")
+}
+
+/// Slice 131 (founder decision C108 (c)) — A MOVED TASK'S OLD KEY. When a task
+/// moves to another project of its client it takes a new number there; this
+/// row keeps its old `(project, number)` pointing at it, so a link with the
+/// old key — an e-mail, a comment, a bookmark — still finds it (the item page
+/// and the peeks ask here when a number is not found, and redirect only a
+/// reader who can open the task where it is now). A task moved twice has two
+/// rows; each points at the task. Goes with the project and with the task.
+/// Class A: the agency's own bookkeeping, never a contact's.
+model WorkItemAlias {
+  tenantId   String   @map("tenant_id")
+  projectId  String   @map("project_id")
+  number     Int
+  workItemId String   @map("work_item_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  project  Project  @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  workItem WorkItem @relation(fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, projectId, number])
+  @@index([tenantId, workItemId])
+  @@map("work_item_alias")
 }
 
 /// Extra members on an item (not the assignee). Drives notifications

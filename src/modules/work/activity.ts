@@ -1,3 +1,4 @@
+import { scopeWhere, type MemberActor } from "@/authz/authorize";
 import type { TenantDb } from "@/db";
 import { idCursor } from "@/lib/id-cursor";
 import type { WorkCtx } from "./states";
@@ -291,12 +292,15 @@ async function resolveMilestoneNames(
   tx: TenantDb,
   tenantId: string,
   clientId: string,
+  projectId: string,
   milestoneIds: ReadonlySet<string>,
 ): Promise<(id: string | null) => string | null> {
   if (milestoneIds.size === 0) return () => null;
   return nameLookup(
     await tx.milestone.findMany({
-      where: { tenantId, clientId, id: { in: [...milestoneIds] } },
+      // The task's own project only: a moved task's older rows point at the
+      // project it left, which this reader may not see (slice 131).
+      where: { tenantId, clientId, projectId, id: { in: [...milestoneIds] } },
       select: { id: true, name: true },
     }),
   );
@@ -311,11 +315,17 @@ async function resolveMilestoneNames(
 async function resolveLabelNames(
   tx: TenantDb,
   tenantId: string,
+  projectId: string,
   labelIds: ReadonlySet<string>,
 ): Promise<(id: string | null) => string | null> {
   if (labelIds.size === 0) return () => null;
   return nameLookup(
-    await tx.label.findMany({ where: { tenantId, id: { in: [...labelIds] } }, select: { id: true, name: true } }),
+    await tx.label.findMany({
+      // The workspace's labels and the task's own project's — never another
+      // project's, which only a moved task's older rows can name (slice 131).
+      where: { tenantId, id: { in: [...labelIds] }, OR: [{ projectId: null }, { projectId }] },
+      select: { id: true, name: true },
+    }),
   );
 }
 
@@ -356,6 +366,42 @@ export async function nameCopyRefs(
     rows: page.rows.map((r) =>
       r.field === "copiedFrom" ? { ...r, oldRefName: key(r.oldRef) } : r.field === "copiedTo" ? { ...r, newRefName: key(r.newRef) } : r,
     ),
+  };
+}
+
+/**
+ * A MOVE's old place (slice 131, C108) as its old KEY — `oldRef` is the
+ * project the task left, `oldValue` its number there — resolved only when
+ * the READER's scope reaches that project: a member who sees only where the
+ * task is now never learns where it was, nor that project's key (copy's
+ * L-1 rule, widened to the client's other projects, which a move is always
+ * between). Its OWN step, after `getItemDetail`'s batch, like
+ * `nameCopyRefs`; a page without move rows reads nothing.
+ */
+export async function nameMoveRefs(
+  tx: TenantDb,
+  ctx: { readonly tenantId: string; readonly actor: MemberActor },
+  page: ItemActivityPage,
+): Promise<ItemActivityPage> {
+  const projectIds = new Set<string>();
+  for (const r of page.rows) if (r.field === "moved" && r.oldRef) projectIds.add(r.oldRef);
+  if (projectIds.size === 0) return page;
+  const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "id" });
+  const keyOf = new Map(
+    (
+      await tx.project.findMany({
+        where: { AND: [scope, { tenantId: ctx.tenantId, id: { in: [...projectIds] } }] },
+        select: { id: true, key: true },
+      })
+    ).map((p) => [p.id, p.key]),
+  );
+  return {
+    ...page,
+    rows: page.rows.map((r) => {
+      if (r.field !== "moved" || !r.oldRef) return r;
+      const key = keyOf.get(r.oldRef);
+      return { ...r, oldRefName: key && r.oldValue ? `${key}-${r.oldValue}` : null };
+    }),
   };
 }
 
@@ -427,6 +473,13 @@ export async function readItemActivity(
   tenantId: string,
   workItemId: string,
   clientId: string,
+  /**
+   * The task's project NOW (slice 131): a moved task's older rows name the
+   * milestones and labels of the project it LEFT, and a reader of where it
+   * is now must not learn them (AUTHZ §4's sibling rule; the security
+   * review's LOW). Names resolve only within this project.
+   */
+  projectId: string,
   rawBefore: string | null | undefined,
 ): Promise<ItemActivityPage> {
   // The cursor must name one of THIS item's rows (see above): one primary
@@ -489,8 +542,8 @@ export async function readItemActivity(
   }
   const [names, milestone, label] = await Promise.all([
     resolveActorNames(tx, tenantId, clientId, memberIds, contactIds),
-    resolveMilestoneNames(tx, tenantId, clientId, milestoneIds),
-    resolveLabelNames(tx, tenantId, labelIds),
+    resolveMilestoneNames(tx, tenantId, clientId, projectId, milestoneIds),
+    resolveLabelNames(tx, tenantId, projectId, labelIds),
   ]);
   // A copy's other end (slice 129) is NOT named here: this function is one
   // leg of `getItemDetail`'s batch, and a new read inside a leg is a new

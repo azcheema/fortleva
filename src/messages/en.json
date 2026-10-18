@@ -2167,7 +2167,12 @@
     "TEMPLATE_TOO_LARGE": "This project is too large for a template. A template holds at most 1,000 tasks, 100 milestones and 500 labels, and their words together at most about 3 MB.",
     "TEMPLATE_EMPTY": "This project has no tasks or milestones to save.",
     "TEMPLATE_INVALID": "This template can’t be used. Save it again from a project.",
-    "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval."
+    "STAGE_DEFAULT_GATED": "New tasks can’t start in a stage that needs approval.",
+    "MOVE_TOO_BIG": "This task is too big to move: at most 100 tasks under it, and at most 5 000 time entries on them.",
+    "MOVE_IN_TRIAGE": "A client's request in this task is still waiting in Triage. Accept or decline it first, then move the task.",
+    "MOVE_HOURS_BILLED": "Some of the time on this task is already on an invoice, billed elsewhere or marked won't invoice, so it can't move: that record stays with its project. Copy the task instead.",
+    "MOVE_SOURCE_TAKEN": "The other project already has a task imported from the same row of the same file, so this one can't move there.",
+    "MOVE_BUSY": "Someone else was changing one of the projects at the same moment, so nothing was moved. Try again in a moment."
   },
   "assignments": {
     "title": "Team",
@@ -2596,6 +2601,39 @@
       "copiedLeftOff": "Copied as {key}. Some labels or people didn’t fit {project} and were left off.",
       "failed": "The task couldn’t be copied. Try again.",
       "noProjects": "There’s no project you can copy to."
+    },
+    "move": {
+      "action": "Move…",
+      "title": "Move {key}",
+      "description": "Move this task to another project of the same client. Its comments, files, history and time go with it.",
+      "projectLabel": "Project",
+      "projectOption": "{key} · {name}",
+      "chooseProject": "Choose a project…",
+      "facts": {
+        "subtasks": "{count, plural, one {# task under it moves too.} other {# tasks under it move too.}}",
+        "hours": "Its time moves too ({hours} h), at the new project's rates.",
+        "newNumber": "It gets a new number there. Links to {key} keep working.",
+        "milestone": "Its milestone ({name}) belongs to this project and is cleared.",
+        "labels": "Labels of this project only are left off: {labels}.",
+        "people": "Not given to anyone in {key}, because they can't work there: {people}.",
+        "sharedOn": "Shared with the client: they will see it in {project}.",
+        "sharedOff": "Shared with the client: they won't see it in {project} while its portal is off.",
+        "binned": "{count, plural, one {# deleted task under it moves too.} other {# deleted tasks under it move too.}}",
+        "hoursNoCount": "Its time moves too, at the new project's rates.",
+        "hoursShared": "The client sees hours on one of these projects: their totals change, past months included.",
+        "hoursOwn": "Its time moves too, at the new project's rates — {hours} h of it is yours."
+      },
+      "refuse": {
+        "tooBig": "This task is too big to move: at most 100 tasks under it, and at most 5 000 time entries on them.",
+        "inTriage": "A client's request in it is still waiting in Triage. Accept or decline it first.",
+        "hoursBilled": "Some of its time is already on an invoice, billed elsewhere or marked won't invoice, so it stays with this project. Copy the task instead.",
+        "shared": "It's shared with the client, and only people who may share tasks can move shared work.",
+        "othersHours": "It carries colleagues' time, and only people who may edit others' time can move it."
+      },
+      "noProjects": "This client has no other project you can move it to.",
+      "submit": "Move task",
+      "moved": "Moved to {key}",
+      "failed": "The task couldn't be moved. Try again."
     },
     "status": {
       "PLANNED": "Planned",
@@ -3086,7 +3124,8 @@
         "confirmDelete": "Delete this task?",
         "deleteAnswered": "Your reply is the client’s to keep — archive it instead",
         "deleteAnsweredArchived": "Your reply is the client’s to keep",
-        "copy": "Copy…"
+        "copy": "Copy…",
+        "move": "Move…"
       },
       "priorityLabel": "Priority",
       "dueLabel": "Due date",
@@ -3731,7 +3770,9 @@
         "copiedFrom": "copied this from {task}",
         "copiedTo": "made a copy of this, {task}",
         "copiedFromElsewhere": "copied this from a task in another project",
-        "copiedToElsewhere": "made a copy of this in another project"
+        "copiedToElsewhere": "made a copy of this in another project",
+        "movedFrom": "moved this here from {task}",
+        "movedFromElsewhere": "moved this here from another project"
       },
       "timer": {
         "start": "Start timer",

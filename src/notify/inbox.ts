@@ -666,6 +666,23 @@ async function resolveSubjects(
       })
     : [];
   const byItem = new Map(items.map((i) => [i.id, i]));
+  // A task's project is the one it is in NOW, not the one its notice was
+  // written in (slice 131, C108): a moved task's notices keep their title
+  // and link. Its projects not on the page yet are read with the same scope
+  // and gate as the others, in sequence.
+  const movedTo = mayViewProjects
+    ? [...new Set(items.map((i) => i.projectId))].filter((id) => !byProject.has(id))
+    : [];
+  if (movedTo.length > 0) {
+    for (const p of await tx.project.findMany({
+      where: {
+        AND: [await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "id" }), { tenantId: ctx.tenantId, id: { in: movedTo } }],
+      },
+      select: { id: true, key: true, name: true },
+    })) {
+      byProject.set(p.id, p);
+    }
+  }
 
   // A deliverable shared with the company itself has no project: its
   // decision is named by the CLIENT and links to the client's Files tab

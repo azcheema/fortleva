@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/table";
 import { BulkBar } from "@/components/work-view/bulk-bar";
 import { CopyTaskDialog, type CopySubject } from "@/components/work-view/copy-task-dialog";
+import { MoveTaskDialog, type MoveSubject } from "@/components/work-view/move-task-dialog";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
 import { LabelChips } from "@/components/work-view/label-chips";
 import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
@@ -651,6 +652,8 @@ export function BacklogTable({
   // "Copy…" from a row's menu (slice 129, C106): the same road back to the
   // row when its dialog closes, for the same reason.
   const [copying, setCopying] = useState<CopySubject | null>(null);
+  // Slice 131 (C108): the task being moved to another project of its client.
+  const [moving, setMoving] = useState<MoveSubject | null>(null);
   // `J K` hand focus to a row AFTER it has rendered: the handler only
   // NAMES the row (`setFocusedRowId`), and this effect gives it focus
   // once it is in the DOM — never a timer, and no pending ref (a stale
@@ -1595,6 +1598,11 @@ export function BacklogTable({
                 ...(data.caps.canCreate && item.number > 0
                   ? [{ key: "copy", label: t("actions.copy"), onSelect: () => setCopying({ id: item.id, number: item.number, projectKey }) }]
                   : []),
+                // Slice 131 (C108): move it to another project of its client
+                // — create AND edit, as the panel's Move… (the move asks view too).
+                ...(data.caps.canCreate && data.caps.canEdit && item.number > 0
+                  ? [{ key: "move", label: t("actions.move"), onSelect: () => setMoving({ id: item.id, number: item.number, projectKey }) }]
+                  : []),
                 item.archivedAt
                   ? {
                       key: "restore",
@@ -2237,6 +2245,17 @@ export function BacklogTable({
         onClosed={() => {
           if (copying) setFocusedRowId(copying.id);
           setCopying(null);
+        }}
+      />
+      <MoveTaskDialog
+        subject={moving}
+        actionSurface="backlog"
+        landing={{ surface: "backlog", returnTo: `${basePath}?${searchParams.toString()}` }}
+        onClosed={() => {
+          // Cancelled: back to its row. Moved: the row is gone, and the
+          // task's own page in its new project is opening.
+          if (moving) setFocusedRowId(moving.id);
+          setMoving(null);
         }}
       />
     </div>

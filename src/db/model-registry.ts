@@ -122,6 +122,7 @@ export const MODEL_CLASSES = {
     // task of a series.
     "workItemRepeat",
     "workItemRepeatItem",
+    "workItemAlias",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -312,6 +313,9 @@ export const RLS_CLASSES = {
     // The agency's routine; the copies are `work_item` rows, born INTERNAL.
     "workItemRepeat",
     "workItemRepeatItem",
+    // Slice 131 — a moved task's old key (C108 (c)): the agency's own
+    // bookkeeping, so an old link still finds the task. Never a client's.
+    "workItemAlias",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no
