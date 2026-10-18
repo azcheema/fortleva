@@ -36,7 +36,7 @@
 ### 3.2 The page (`/activity`)
 
 - A rail entry **Activity** after Calendar, on `work_item:view` (the rail's precedent for Tasks and Calendar); no `G` key.
-- Days newest first — "Today", "Yesterday", then the weekday and date — each event one line: an icon for its kind, the sentence (who, what, a link to it), and under it the project (or client) — no clock time (§5a). Links: a task opens in its project's backlog peek; a file goes to its project's (or client's) Files; an update to its page; a milestone or a version to the project's timeline.
+- Days newest first — "Today", "Yesterday", then the weekday and date — each event one line: an icon for its kind, the sentence (who, what, a link to it), and under it the project (or client) — no clock time (§5a; *superseded by C111, slice 134: each line shows its clock time*). Links: a task opens in its project's backlog peek; a file goes to its project's (or client's) Files; an update to its page; a milestone or a version to the project's timeline.
 - Filters: **Project** and **Client** (native selects, as the Tasks page's), each drawn when there are two or more to choose from; a change goes back to today. **Show earlier** at the foot; **Back to today** once earlier (one filter at a time, §5a).
 - Server-rendered throughout, every date and time formatted on the server in the reader's zone — no hydration difference.
 - Parameters read strictly (`src/lib/activity-plan.ts`): `project` a key, `client` a uuid, `until` a `YYYY-MM-DD` not after today.
@@ -65,7 +65,7 @@
 ## 5a. Changed by the reviews (§6)
 
 - **No report, no export** is ever "a file added" (a report is behind `report:view` and the reports module everywhere else).
-- **The day, never the clock:** each line shows its project or client only; the day heading is the only time. With a teammate named on each line, times would read as when each person worked and was "last active", which SECURITY.md §9.7.3 rules out.
+- *Superseded 2026-10-18 by founder decision C111 (slice 134): every line now shows its clock time — UI.md §5.19, SECURITY.md §9.7.3.* **The day, never the clock:** each line shows its project or client only; the day heading is the only time. With a teammate named on each line, times would read as when each person worked and was "last active", which SECURITY.md §9.7.3 rules out.
 - **Paging inside a day:** a page cut at 300 goes on INSIDE its last day (`until` + `skip`, the count of that day's events already drawn), so nothing is out of reach; past 3 000 into one day (only a huge import) it moves to the day before.
 - **"Earlier" looks back a year at a time:** within the year before the window, the newest event's day; an empty year jumps a year back; the history ends at the workspace's creation.
 - **A birth into Done is "added", not "finished":** a Done row within five seconds of the task's first `created` row (an import's or a template's same statement, `createItem` straight into a Done column).
@@ -89,7 +89,7 @@
 
 ### Code review — no HIGH
 - **M1 — reports, as above.** TAKEN.
-- **M2 — clock times beside named colleagues are a "last active" timeline SECURITY.md §9.7.3 still forbids.** TAKEN the conservative way: no times on the page (§5a). Showing them would need the founder's word and an amendment of §9.7.3 and the staff notice — offered to the founder, not built.
+- *(Superseded 2026-10-18 by founder decision C111, slice 134: the times are shown, §9.7.3 and the staff notice amended.)* **M2 — clock times beside named colleagues are a "last active" timeline SECURITY.md §9.7.3 still forbids.** TAKEN the conservative way: no times on the page (§5a). Showing them would need the founder's word and an amendment of §9.7.3 and the staff notice — offered to the founder, not built.
 - **L1 — truncation lost events.** TAKEN (§5a).
 - **L2 — imports and templates made false "finished" lines.** TAKEN (§5a). A task finished and reopened keeps its "finished" line — what happened; ACCEPTED.
 - **L3 — contacts not bound to the event's client.** TAKEN.

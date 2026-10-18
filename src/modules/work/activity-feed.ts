@@ -23,8 +23,8 @@ import { principalOf, type WorkCtx } from "./states";
  * request, a task finished, a client's person commenting, a file added or a
  * new version of one, a client deciding on a file, an update published, a
  * milestone reached, a version shipped, a client deciding on a version.
- * NOTHING per person beyond naming who did each (C110 (a)): no filter, no
- * count, no time.
+ * NOTHING per person beyond naming who did each (C110 (a)) and when (each
+ * event's clock time — C111): no filter, no count, no hours.
  *
  * WHERE: every table's own `clientId`/`projectId` under `scopeWhere`,
  * composed with `AND` — never spread (the inbox's page-2 bug). The filters

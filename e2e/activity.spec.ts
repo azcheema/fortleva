@@ -8,7 +8,7 @@ import { requireSeed, type E2ESeed } from "./fixtures/tenant";
  *
  * WHAT THIS PROVES THAT THE DBTEST CANNOT: the page is in the menu, a task
  * just added stands under "Today" as "You added KEY-N Title" — the reader as
- * "You", the task by key and title — the project filter narrows the page
+ * "You", the task by key and title, with its clock time (C111) — the project filter narrows the page
  * through its URL, and the task's link opens it beside its project's backlog.
  * Which events appear, for whom, and the window are `activity-feed.dbtest.ts`'s.
  */
@@ -39,6 +39,11 @@ test("a task added stands under Today as yours, the project filter narrows to it
   const event = page.locator('[data-testid="activity-event"][data-kind="task_added"]', { hasText: own.title });
   await expect(event).toBeVisible(WAIT);
   await expect(event).toContainText(`You added ${seed.projectKey}-${own.number} ${own.title}`);
+  // C111: every line carries its clock time, the instant in `datetime`.
+  const time = event.getByTestId("activity-time");
+  await expect(time).toHaveText(/^\d{2}:\d{2}$/);
+  const at = Date.parse((await time.getAttribute("datetime")) ?? "");
+  expect(Math.abs(Date.now() - at)).toBeLessThan(15 * 60_000);
 
   await page.getByTestId("activity-project-filter").selectOption(seed.projectKey);
   await page.waitForURL(new RegExp(`/activity\\?project=${seed.projectKey}$`), WAIT);

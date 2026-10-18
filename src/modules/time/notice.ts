@@ -17,6 +17,19 @@ import { principalOf, type TimeCtx } from "./ctx";
  * 2T is demoable; the tenant edits and republishes (= a new version,
  * re-acknowledgment required). Lawyer sign-off on the text is a
  * go-live gate for Naxdor (PLAN.md 2T founder inputs), not a code gate.
+ *
+ * Amended 2026-10-18 (founder decision C111): "who sees what" names what
+ * COLLEAGUES see — your work, with your name and its time, in a task's
+ * history and on the Activity page — and the never-list's timeline line
+ * reads "of your hours"; with it, the two lines SECURITY.md §9.7.3 said the
+ * notice owed since slice 110: whoever invoices sees billable hours with
+ * their notes, and a client's invoice can list hours per person or per task
+ * and day. The seed reaches only a workspace seeded after it; one seeded
+ * before keeps its own text until its owner EDITS and republishes it (the
+ * editor opens on the current version, so republishing it unedited keeps
+ * the old text — and still asks everyone to confirm again). The review of
+ * C111 also had the managers' line name the team export, and the clients'
+ * line the progress updates' hours.
  */
 
 export const STAFF_NOTICE_PURPOSES = ["billing", "planning", "profitability", "working_time"] as const;
@@ -33,7 +46,7 @@ Only time you report yourself: a timer you start and stop, or an entry you type 
 
 ## What is never recorded
 
-No idle detection, screenshots or screen recording; no application, website or keystroke capture; no presence or "who is working now" indicator (not even while on shift); no per-minute activity maps, leaderboards or rankings; no geolocation or location from your network address; no timelines visible to colleagues; no reading of your calendar or mail; no productivity score. The software cannot do these things — they are not switched off, they do not exist.
+No idle detection, screenshots or screen recording; no application, website or keystroke capture; no presence or "who is working now" indicator (not even while on shift); no per-minute activity maps, leaderboards or rankings; no geolocation or location from your network address; no timeline of your hours visible to colleagues; no reading of your calendar or mail; no productivity score. The software cannot do these things — they are not switched off, they do not exist.
 
 ## Why
 
@@ -42,9 +55,11 @@ Client billing, capacity planning, project profitability and working-time record
 ## Who sees what
 
 - **You** see and can export all of your own entries and shifts at any time.
-- **Managers** with the team permission see hours per person per project and day totals of closed shifts — never a live clock — and, with their own permissions, billing rates and budgets.
+- **Colleagues** see your work in what they can reach — tasks you add, change or finish, files, updates, comments — with your name and when it happened, in each task's activity and on the Activity page. Neither shows your hours, and the Activity page has no view or count by person.
+- **Managers** with the team permission see hours per person per project and day totals of closed shifts — never a live clock — and, with the export permission, each closed entry with its start, stop and note, and each closed shift; with their own permissions, also billing rates and budgets.
+- **Whoever invoices** (by default the CEO and Admin roles) sees your billable hours not yet invoiced — the day, how long and your note — to put them on invoices.
 - **Finance / management** may see internal cost rates and margins, behind two-factor authentication.
-- **Clients** never see an entry, a name, a per-person figure or a rate — only project-level monthly totals when the project shares hours, and reports that were explicitly published.
+- **Clients** never see your entries or your cost — only project-level totals (by month, and in progress updates) when the project shares hours, reports that were explicitly published, and the invoices sent to them, which — when whoever issues one chooses — can list hours per person by name and each day's hours per task, together showing your hours day by day.
 
 ## How long
 
@@ -62,7 +77,7 @@ Bara tid du själv rapporterar: en timer du startar och stoppar, eller en post d
 
 ## Vad som aldrig registreras
 
-Ingen inaktivitetsmätning, inga skärmdumpar eller skärminspelningar; ingen registrering av program, webbplatser eller tangenttryckningar; ingen närvaro- eller "vem jobbar nu"-indikator (inte ens under ett pass); inga aktivitetskartor per minut, topplistor eller rankningar; ingen platsinformation från GPS eller nätverksadress; inga tidslinjer som kollegor kan se; ingen läsning av din kalender eller e-post; inget produktivitetspoäng. Programvaran kan inte göra detta — funktionerna är inte avstängda, de finns inte.
+Ingen inaktivitetsmätning, inga skärmdumpar eller skärminspelningar; ingen registrering av program, webbplatser eller tangenttryckningar; ingen närvaro- eller "vem jobbar nu"-indikator (inte ens under ett pass); inga aktivitetskartor per minut, topplistor eller rankningar; ingen platsinformation från GPS eller nätverksadress; ingen tidslinje över dina timmar som kollegor kan se; ingen läsning av din kalender eller e-post; ingen produktivitetspoäng. Programvaran kan inte göra detta — funktionerna är inte avstängda, de finns inte.
 
 ## Varför
 
@@ -71,9 +86,11 @@ Kundfakturering, kapacitetsplanering, projektlönsamhet och arbetstidsregistreri
 ## Vem ser vad
 
 - **Du** ser och kan exportera alla dina egna poster och pass när som helst.
-- **Chefer** med teambehörighet ser timmar per person och projekt samt dagssummor för avslutade pass — aldrig en pågående klocka — och, med egen behörighet, timpriser och budgetar.
+- **Kollegor** ser ditt arbete i det de har tillgång till — uppgifter du lägger till, ändrar eller slutför, filer, uppdateringar, kommentarer — med ditt namn och när det hände, i varje uppgifts aktivitet och på sidan Aktivitet. Ingen av dem visar dina timmar, och sidan Aktivitet har ingen vy och ingen sammanräkning per person.
+- **Chefer** med teambehörighet ser timmar per person och projekt samt dagssummor för avslutade pass — aldrig en pågående klocka — och, med exportbehörighet, varje avslutad post med start, stopp och anteckning samt varje avslutat pass; med egen behörighet även timpriser och budgetar.
+- **Den som fakturerar** (som standard rollerna CEO och Admin) ser dina fakturerbara timmar som ännu inte fakturerats — dagen, hur länge och din anteckning — för att lägga dem på fakturor.
 - **Ekonomi / ledning** kan se interna kostnadssatser och marginaler, bakom tvåfaktorsautentisering.
-- **Kunder** ser aldrig en post, ett namn, en siffra per person eller ett pris — bara månadssummor per projekt när projektet delar timmar, och rapporter som uttryckligen publicerats.
+- **Kunder** ser aldrig dina poster eller vad du kostar — bara summor per projekt (per månad och i projektuppdateringar) när projektet delar timmar, rapporter som uttryckligen publicerats och de fakturor de får, som — när den som utfärdar fakturan väljer det — kan visa timmar per person med namn och varje dags timmar per uppgift, tillsammans dina timmar dag för dag.
 
 ## Hur länge
 

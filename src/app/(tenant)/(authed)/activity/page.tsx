@@ -59,8 +59,8 @@ const ICON: Record<FeedEvent["kind"], LucideIcon> = {
  *
  * Server-rendered throughout: every day is formatted HERE in the reader's
  * zone (`resolveTimeZone`), so nothing can differ between Node's and the
- * browser's ICU on hydration. No clock time is shown (see `dayOf`). The parameters are read strictly and every
- * link is built from the APPLIED values.
+ * browser's ICU on hydration — the clock time on each line too (C111). The
+ * parameters are read strictly and every link is built from the APPLIED values.
  */
 export default async function ActivityPage({
   searchParams,
@@ -95,11 +95,12 @@ export default async function ActivityPage({
 
   const applied = read.applied;
   const filtered = applied.project !== null || applied.client !== null;
-  // The DAY only, never the clock: with a teammate named on each line, times
-  // would read as when each was working and "last active" — which
-  // SECURITY.md §9.7.3 rules out (the code review's M2). The order within a
-  // day is newest first.
+  // Day headings and each line's clock time, both in the reader's zone. The
+  // time is on EVERY line, a teammate's included — founder decision C111,
+  // which amended SECURITY.md §9.7.3 (the code review's M2 had taken times
+  // out) and the staff notice's "who sees what". Newest first within a day.
   const dayOf = (e: FeedEvent) => localDateString(e.at, timeZone);
+  const clock = dateFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
   const weekday = dateFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
   const weekdayYear = dateFormat(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
   const shortDay = dateFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });
@@ -268,6 +269,13 @@ export default async function ActivityPage({
                                 {placeOf(e)}
                               </p>
                             </div>
+                            <time
+                              dateTime={e.at.toISOString()}
+                              className="num mt-0.5 shrink-0 text-xs text-muted-foreground"
+                              data-testid="activity-time"
+                            >
+                              {clock.format(e.at)}
+                            </time>
                           </li>
                         );
                       })}
