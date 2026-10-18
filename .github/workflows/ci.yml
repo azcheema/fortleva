@@ -331,7 +331,13 @@ jobs:
     # slow apt mirror), leaving the tests 24 — no failure, no log. Still a
     # hang guard: 40 is ~1.6× today's whole job, CI is free on this public
     # repository, and the measure to take again is the suite's own step.
-    timeout-minutes: 40
+    #
+    # RAISED 40 → 60 on 2026-10-18, at the founder's word, for the same
+    # reason: 319 tests, their step 31.6 min (39081353492), 33.3 (39092242701)
+    # and then 39.1 on a slow runner — run 39095464803 was CANCELLED healthy
+    # at 40 with "314 passed" printed and only the teardown left; its re-run
+    # passed at 37.8 (the job 38 m 58 s). 60 is ~1.5× the slow runner's job.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:18
