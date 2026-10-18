@@ -1,7 +1,7 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -36,8 +36,9 @@ import {
   privateNamedAction,
   publishUpdateAction,
   saveUpdateDraftAction,
+  scheduleUpdateAction,
 } from "./actions";
-import { PublishDialog } from "./publish-dialog";
+import { PublishDialog, type PublishLater } from "./publish-dialog";
 import { isBlank, SectionEditor } from "./section-editor";
 
 /**
@@ -90,14 +91,22 @@ export function UpdateComposer({
   projectKey,
   draft,
   context: initialContext,
+  schedule,
 }: {
   projectId: string;
   projectKey: string;
   draft: ComposerDraft;
   context: ComposerContext;
+  /**
+   * Scheduling (slice 135, C112): the zone and today the dialog's day and
+   * hour are read in — the page's `resolveTimeZone`, the same zone the server
+   * will read them in. Offered when the context says the member may publish.
+   */
+  schedule: { readonly timeZone: string; readonly today: string };
 }) {
   const t = useTranslations("projects.updates.composer");
   const tPublish = useTranslations("projects.updates.publish");
+  const format = useFormatter();
   const tSections = useTranslations("updates.sections");
   const tHealth = useTranslations("states.projectHealth");
   const tCommon = useTranslations("common");
@@ -166,7 +175,13 @@ export function UpdateComposer({
     body: bodyOfFrame(slots, docs, include),
   });
 
-  const save = (): Promise<string | null> =>
+  /**
+   * Save the draft; resolves with its id and the `updatedAt` the WRITE
+   * returned — the version Publish and Schedule then bind to, so a save by
+   * somebody else in between is refused rather than published or scheduled
+   * unseen (slice 135's security review).
+   */
+  const save = (): Promise<{ id: string; updatedAt: string } | null> =>
     new Promise((resolve) => {
       // More headings with text than a post holds — reachable only when a
       // draft keeps headings its layout has since dropped (the design
@@ -185,7 +200,7 @@ export function UpdateComposer({
         }
         setId(r.value.id);
         setDirty(false);
-        resolve(r.value.id);
+        resolve(r.value);
       });
     });
 
@@ -193,16 +208,52 @@ export function UpdateComposer({
     void save().then((saved) => {
       if (saved) {
         toast.success(t("saved"));
-        if (!id) router.replace(`/projects/${projectKey}/updates/${saved}`);
+        if (!id) router.replace(`/projects/${projectKey}/updates/${saved.id}`);
         else router.refresh();
       }
     });
 
-  const onPublish = async (visibility: "INTERNAL" | "CLIENT_VISIBLE") => {
+  const onPublish = async (visibility: "INTERNAL" | "CLIENT_VISIBLE", later: PublishLater | null) => {
     const saved = await save();
     if (!saved) return;
+    if (later) {
+      // Slice 135 (C112): scheduled, not published — the page then shows it
+      // locked, with Unschedule.
+      start(async () => {
+        const r = await scheduleUpdateAction({
+          projectKey,
+          id: saved.id,
+          visibility,
+          ...later,
+          expectedUpdatedAt: saved.updatedAt,
+        }).catch(() => ({
+          ok: false as const,
+          message: t("failed"),
+        }));
+        setPublishing(false);
+        if (!r.ok) {
+          toast.error(r.message || t("failed"));
+          return;
+        }
+        // The hour as STORED, on the member's clock — on a spring-forward
+        // day a 02:00 that does not exist is 03:00, and the toast says so.
+        const at = new Date(r.value.scheduledFor);
+        const zone = { timeZone: schedule.timeZone } as const;
+        const day = format.dateTime(at, { weekday: "short", day: "numeric", month: "short", ...zone });
+        const hour = format.dateTime(at, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", ...zone });
+        toast.success(tPublish("scheduledToast", { day, hour }));
+        router.replace(`/projects/${projectKey}/updates/${saved.id}`);
+        router.refresh();
+      });
+      return;
+    }
     start(async () => {
-      const r = await publishUpdateAction({ projectKey, id: saved, visibility }).catch(() => ({
+      const r = await publishUpdateAction({
+        projectKey,
+        id: saved.id,
+        visibility,
+        expectedUpdatedAt: saved.updatedAt,
+      }).catch(() => ({
         ok: false as const,
         message: t("failed"),
       }));
@@ -219,7 +270,7 @@ export function UpdateComposer({
             ? tPublish("publishedVisible", { seq })
             : tPublish("publishedPortalOff", { seq }),
       );
-      router.replace(`/projects/${projectKey}/updates/${saved}`);
+      router.replace(`/projects/${projectKey}/updates/${saved.id}`);
       router.refresh();
     });
   };
@@ -544,8 +595,11 @@ export function UpdateComposer({
           privateNamed={privateNamed}
           checking={checking}
           busy={pending}
+          canSchedule={context.canPublish}
+          timeZone={schedule.timeZone}
+          today={schedule.today}
           onCancel={() => setPublishing(false)}
-          onConfirm={(visibility) => void onPublish(visibility)}
+          onConfirm={(visibility, later) => void onPublish(visibility, later)}
         />
       ) : null}
       <span className="sr-only" aria-live="polite">

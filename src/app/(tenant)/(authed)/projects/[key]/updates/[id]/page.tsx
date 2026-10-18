@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
 import { handleAuthzRedirect } from "@/authz/redirects";
@@ -9,6 +9,9 @@ import { Callout, SectionCard } from "@/components/semantic";
 import { UpdateView } from "@/components/updates/update-view";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
+import { resolveTimeZone } from "@/i18n/resolve";
+import { todayIn } from "@/lib/due-date";
+import { dateFormat } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 import { getUpdate, readComposerContext, type ComposerContext, type UpdateDetail } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
@@ -17,12 +20,15 @@ import { loadProject } from "../../data";
 import { DraftActions } from "../draft-actions";
 import { InternalCard } from "../internal-card";
 import { PublishedActions } from "../published-actions";
+import { ScheduledActions } from "../scheduled-actions";
 import { UpdateComposer } from "../update-composer";
 
 /**
  * ONE UPDATE. A draft's page is the composer; a published or archived
  * post's page is the post as the client reads it, the staff-only
- * figures beside it, and the verbs still open on it.
+ * figures beside it, and the verbs still open on it. A SCHEDULED draft
+ * (slice 135, C112 (a)) is locked: its page is the post as it will read,
+ * when and to whom it goes, and Unschedule.
  */
 const isUuid = (s: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
@@ -45,7 +51,7 @@ export default async function UpdatePage({ params }: { params: Promise<{ key: st
   try {
     update = await getUpdate(ctx, id);
     if (update.projectId !== project.id) notFound();
-    if (update.status === "DRAFT" && update.caps.create && project.status !== "ARCHIVED") {
+    if (update.status === "DRAFT" && !update.scheduled && update.caps.create && project.status !== "ARCHIVED") {
       context = await readComposerContext(ctx, project.id, {
         periodStart: update.periodStart,
         periodEnd: update.periodEnd,
@@ -59,6 +65,7 @@ export default async function UpdatePage({ params }: { params: Promise<{ key: st
   }
 
   const base = `/projects/${project.key}/updates`;
+  const timeZone = await resolveTimeZone();
 
   if (update.status === "DRAFT" && context) {
     return (
@@ -78,6 +85,7 @@ export default async function UpdatePage({ params }: { params: Promise<{ key: st
             body: update.body,
           }}
           context={context}
+          schedule={{ timeZone, today: todayIn(timeZone) }}
         />
       </div>
     );
@@ -86,6 +94,19 @@ export default async function UpdatePage({ params }: { params: Promise<{ key: st
   const prefs = await withTenant(membership.tenantId, { type: "member", id: membership.memberId }, (tx) =>
     readPreferences(tx, membership.tenantId),
   );
+  // When it goes out, on the member's own clock — the zone the dialog read
+  // the hour in. Server-rendered, so no hydration can disagree.
+  const scheduledAt = update.scheduled
+    ? dateFormat(await getLocale(), {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZone,
+      }).format(update.scheduled.at)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -104,12 +125,31 @@ export default async function UpdatePage({ params }: { params: Promise<{ key: st
           />
         ) : null}
         {/* A draft the composer will not open (the project is archived)
-            keeps its one verb: it can still be discarded. */}
-        {update.status === "DRAFT" && update.caps.create ? (
+            keeps its one verb: it can still be discarded. A SCHEDULED one's
+            is Unschedule (C112 (a)) — discarding waits until it is a draft. */}
+        {update.status === "DRAFT" && update.scheduled && update.caps.publish ? (
+          <ScheduledActions projectKey={project.key} id={update.id} />
+        ) : null}
+        {update.status === "DRAFT" && !update.scheduled && update.caps.create ? (
           <DraftActions projectKey={project.key} id={update.id} />
         ) : null}
       </div>
-      {update.status === "DRAFT" ? <Callout tone="info">{t("detail.draftBanner")}</Callout> : null}
+      {update.status === "DRAFT" && update.scheduled && scheduledAt ? (
+        <Callout tone="info" title={t("scheduled.bannerTitle", { when: scheduledAt })}>
+          <span data-testid="update-scheduled-banner">
+            {t(
+              update.scheduled.visibility !== "CLIENT_VISIBLE"
+                ? "scheduled.bannerTeam"
+                : project.portalEnabled
+                  ? "scheduled.bannerClient"
+                  : "scheduled.bannerPortalOff",
+              { name: update.scheduled.byName ?? t("scheduled.someone"), zone: timeZone },
+            )}
+          </span>
+        </Callout>
+      ) : update.status === "DRAFT" ? (
+        <Callout tone="info">{t("detail.draftBanner")}</Callout>
+      ) : null}
       {update.status === "ARCHIVED" ? <Callout tone="caution">{t("detail.archivedBanner")}</Callout> : null}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
         <SectionCard

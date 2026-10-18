@@ -2,7 +2,7 @@ import { record } from "@/audit/record";
 import { resolveScope, type MemberActor, type ScopeResolution } from "@/authz/authorize";
 import { withTenant, type TenantDb } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
-import { dateColumn, isoDateOf, localDateString, localHourInstant } from "@/lib/duration";
+import { dateColumn, isoDateOf, localDateString, localHourInstant, startOfLocalDay } from "@/lib/duration";
 import { addDays } from "@/lib/week";
 import { DIGEST_SENDING_TENANT_STATUSES } from "@/notify/digest";
 import { emit } from "@/notify/emit";
@@ -13,6 +13,7 @@ import {
   UPDATE_REMINDER_HOUR,
   UPDATE_REMINDER_LAST_HOUR,
   isUpdateWeekday,
+  nextRoundDayOf,
   reminderSlotOn,
   reminderStepOn,
   scheduleInputOf,
@@ -118,6 +119,52 @@ export async function lastCountingPostAt(
   return row?.publishedAt ?? null;
 }
 
+/** Whether a post scheduled with this audience would count for the project's schedule once out (C70 (g)). */
+const countsOnceOut = (portalEnabled: boolean, visibility: string | null): boolean =>
+  !portalEnabled || visibility === "CLIENT_VISIBLE";
+
+/**
+ * The instant a round ends — the start of the NEXT round's day, in the
+ * workspace's zone (slice 135; both reviews' medium, the re-checks' M1 and
+ * L1): a post scheduled to go out BEFORE it is in hand for the round; one
+ * scheduled for a later round — weeks out, say — silences nothing, and the
+ * round is reminded and badged as usual. `slot` is the round's own day
+ * (`reminderSlotOn`), never the first missed due day.
+ */
+function roundEndOf(
+  project: { readonly updateCadence: string; readonly updateWeekday: number },
+  slot: string,
+  timeZone: string,
+): Date {
+  const next =
+    (project.updateCadence === "WEEKLY" || project.updateCadence === "BIWEEKLY" || project.updateCadence === "MONTHLY") &&
+    isUpdateWeekday(project.updateWeekday)
+      ? nextRoundDayOf(project.updateCadence, project.updateWeekday, slot)
+      : addDays(slot, 7);
+  return startOfLocalDay(next, timeZone);
+}
+
+/** A scheduled post that would count, going out before `before` (slice 135). */
+async function hasCountingSchedule(
+  tx: TenantDb,
+  tenantId: string,
+  projectId: string,
+  portalEnabled: boolean,
+  before: Date,
+): Promise<boolean> {
+  const row = await tx.projectUpdate.findFirst({
+    where: {
+      tenantId,
+      projectId,
+      status: "DRAFT",
+      scheduledFor: { lt: before },
+      ...(portalEnabled ? { scheduledVisibility: "CLIENT_VISIBLE" } : {}),
+    },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
 /**
  * Where a project's schedule stands at `now` — the project page's header
  * badge and the Updates tab's line, from the same rule the job sends by.
@@ -134,7 +181,22 @@ export async function readUpdateSchedule(
   if (project.updateCadence === "NONE" || project.status !== "ACTIVE" || project.archivedAt !== null) return null;
   const prefs = await readPreferences(tx, tenantId);
   const last = await lastCountingPostAt(tx, tenantId, project.id, project.portalEnabled);
-  return updateScheduleAt(scheduleInputOf(project, last, prefs.timezone), now);
+  const status = updateScheduleAt(scheduleInputOf(project, last, prefs.timezone), now);
+  if (status === null) return null;
+  // A post scheduled to go out within the CURRENT round (slice 135) is in
+  // hand: no "due" or "late" badge, as the job sends no reminder (`plan`) —
+  // and, before the due day, no "next update due" line either: the next
+  // update is written, and its page and the list say when it goes out.
+  // The round is today's reminder slot — not `dueOn`, which stays on the
+  // FIRST missed day for as long as nothing is posted (the re-check's M1).
+  const slot = isUpdateWeekday(project.updateWeekday)
+    ? (reminderSlotOn(project.updateCadence, project.updateWeekday, status.dueOn, localDateString(now, prefs.timezone)) ??
+      status.dueOn)
+    : status.dueOn;
+  if (await hasCountingSchedule(tx, tenantId, project.id, project.portalEnabled, roundEndOf(project, slot, prefs.timezone))) {
+    return null;
+  }
+  return status;
 }
 
 /** The reminder a project is owed at `now`, or null — the plan's and the send's one answer. */
@@ -204,6 +266,14 @@ async function plan(tx: TenantDb, tenantId: string, now: Date): Promise<Plan> {
   });
   const lastAny = new Map(anyPost.map((r) => [r.projectId, r._max.publishedAt]));
   const lastShared = new Map(sharedPost.map((r) => [r.projectId, r._max.publishedAt]));
+  // A post already SCHEDULED to go out within the round (slice 135, C112) is
+  // written: its project is not reminded — when it would count once out
+  // (C70 (g): a client-visible one while the portal is on). If the job
+  // refuses it, its scheduler is told.
+  const scheduled = await tx.projectUpdate.findMany({
+    where: { tenantId, projectId: { in: ids }, status: "DRAFT", scheduledFor: { not: null } },
+    select: { projectId: true, scheduledVisibility: true, scheduledFor: true },
+  });
   const sent = new Set(
     (
       await tx.projectUpdateReminderSent.findMany({
@@ -217,7 +287,18 @@ async function plan(tx: TenantDb, tenantId: string, now: Date): Promise<Plan> {
   for (const p of projects) {
     const last = (p.portalEnabled ? lastShared.get(p.id) : lastAny.get(p.id)) ?? null;
     const o = owedAt(p, last, timeZone, now);
-    if (o && !sent.has(`${p.id}|${o.slot}|${o.step}`)) owed.push({ project: p, ...o });
+    if (!o || sent.has(`${p.id}|${o.slot}|${o.step}`)) continue;
+    // The round is the reminder's SLOT (this round's day), never `dueOn`,
+    // the first missed day (the re-check's M1).
+    const roundEnd = roundEndOf(p, o.slot, timeZone);
+    const inHand = scheduled.some(
+      (s) =>
+        s.projectId === p.id &&
+        s.scheduledFor !== null &&
+        s.scheduledFor < roundEnd &&
+        countsOnceOut(p.portalEnabled, s.scheduledVisibility),
+    );
+    if (!inHand) owed.push({ project: p, ...o });
   }
   if (owed.length === 0) return empty;
 
@@ -287,6 +368,9 @@ async function send(tenantId: string, o: Owed, timeZone: string, chosen: readonl
     const last = await lastCountingPostAt(tx, tenantId, project.id, project.portalEnabled);
     const still = owedAt(project, last, timeZone, now);
     if (!still || still.slot !== o.slot || still.step !== o.step || still.dueOn !== o.dueOn) return false;
+    if (await hasCountingSchedule(tx, tenantId, project.id, project.portalEnabled, roundEndOf(project, still.slot, timeZone))) {
+      return false;
+    }
     // The receivers chosen a moment ago, still ACTIVE now (the security
     // review's low: one suspended in between is not mailed). Their codes and
     // scope are not re-resolved here; the inbox row they read names nothing

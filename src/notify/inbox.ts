@@ -97,8 +97,11 @@ export const INBOX_PAGE_SIZE = 50;
 export const MAX_INBOX_IDS = 100;
 /** A snooze may not park a row past this — 90 days, in ms. */
 const MAX_SNOOZE_MS = 90 * 24 * 60 * 60 * 1000;
-/** A progress-update reminder (slice 102): a PROJECT row whose link is the Updates tab. */
-const UPDATE_DUE_KIND: NotificationKind = "project_update.due";
+/**
+ * A progress-update reminder (slice 102), and a scheduled update that could
+ * not go out (slice 135): PROJECT rows whose link is the Updates tab.
+ */
+const UPDATE_KINDS: ReadonlySet<string> = new Set<NotificationKind>(["project_update.due", "project_update.schedule_failed"]);
 
 /** What the UI needs to draw one row. `subject` is null when the
  * receiver may no longer see the thing the notification is about. */
@@ -602,7 +605,7 @@ async function resolveSubjects(
   // An update reminder (slice 102) links to the project's Updates tab, which
   // `project_update:view` gates (C34: a link only where the page would not
   // refuse); its NAME is the project's, under `project:view` like any row.
-  const linksUpdates = rows.some((r) => r.kind === UPDATE_DUE_KIND);
+  const linksUpdates = rows.some((r) => UPDATE_KINDS.has(r.kind));
   const may = await accessibleCodes(tx, ctx.tenantId, ctx.actor, [
     "project:view",
     ...(namesTasks ? ["work_item:view"] : []),
@@ -739,7 +742,7 @@ async function resolveSubjects(
         href:
           r.entityType === BUDGET_ALERT_ENTITY && mayOpenMoney
             ? `/projects/${project.key}/money`
-            : r.kind === UPDATE_DUE_KIND
+            : UPDATE_KINDS.has(r.kind)
               ? mayOpenUpdates
                 ? `/projects/${project.key}/updates`
                 : null

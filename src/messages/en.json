@@ -331,6 +331,7 @@
       "loginAskDeclined": "A client can't send a login you asked for",
       "loginsAlarm": "Repeated failed attempts to open a client's logins",
       "updateDue": "A project update is due",
+      "updateScheduleFailed": "A scheduled update couldn't go out",
       "contractSigned": "A client signed a contract",
       "contractDeclined": "A client declined a contract",
       "contractEnding": "A contract is ending",
@@ -2025,7 +2026,10 @@
     "UPDATE_NOT_PUBLISHED": "That update is not published.",
     "UPDATE_RETRACT_WINDOW_CLOSED": "More than 15 minutes have passed since publishing, so this update can no longer be retracted. Add a note, or archive it.",
     "UPDATE_EMPTY": "Write something in at least one section before publishing.",
-    "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
+    "UPDATE_CHANGED": "This update was changed a moment ago. Check it and try again.",
+    "UPDATE_SCHEDULED": "This update is scheduled. Unschedule it to change it.",
+    "UPDATE_SCHEDULE_TIME": "Pick a time later than now, at most 90 days ahead.",
+    "UPDATE_NAMES_PRIVATE": "This update names work only your team can see. Take those lines out, or schedule it for the team only.",
     "UPDATE_TOO_LARGE": "One of the sections is too long to save.",
     "TABLE_TOO_LARGE": "A table can have at most 20 columns and 500 rows. Make it smaller, or split it in two.",
     "DOWNLOAD_RATE_LIMITED": "You have downloaded a lot of files in a short time. Wait a few minutes and try again.",
@@ -3818,7 +3822,18 @@
       "status": {
         "DRAFT": "Draft",
         "PUBLISHED": "Published",
-        "ARCHIVED": "Archived"
+        "ARCHIVED": "Archived",
+        "SCHEDULED": "Scheduled"
+      },
+      "scheduled": {
+        "bannerTitle": "Scheduled for {when}",
+        "bannerClient": "Your client will read it on the portal. Scheduled by {name}; the time is in {zone}. The numbers are counted when it goes out, and it can't be changed until it is unscheduled.",
+        "bannerPortalOff": "It is for your client, but the portal is off for this project — they will see it once the switch is on (Portal tab). Scheduled by {name}; the time is in {zone}. The numbers are counted when it goes out, and it can't be changed until it is unscheduled.",
+        "bannerTeam": "It will be posted for the team only. Scheduled by {name}; the time is in {zone}. The numbers are counted when it goes out, and it can't be changed until it is unscheduled.",
+        "someone": "someone",
+        "unschedule": "Unschedule",
+        "unscheduled": "Unscheduled. It is a draft again.",
+        "failed": "That did not work. Try again."
       },
       "untitled": "Untitled",
       "seq": "#{seq}",
@@ -3890,7 +3905,17 @@
         "back": "Go back",
         "publishedVisible": "Update #{seq} published. Your client can read it.",
         "publishedInternal": "Update #{seq} published, private to the team.",
-        "publishedPortalOff": "Update #{seq} published. Your client will see it once the portal is switched on for this project."
+        "publishedPortalOff": "Update #{seq} published. Your client will see it once the portal is switched on for this project.",
+        "when": "When",
+        "whenNow": "Now",
+        "whenLater": "Later",
+        "day": "Day",
+        "hour": "Time",
+        "zoneHint": "In {zone}.",
+        "laterHint": "It goes out a few minutes after that hour, with the numbers as they stand then. Until then it is locked — unschedule it to change it.",
+        "scheduleConfirm": "Schedule",
+        "privateNamedLater": "A scheduled update can't name work only your team sees — nobody would be there to take it out. Take those lines out first, or schedule it for the team.",
+        "scheduledToast": "Scheduled for {day}, {hour}."
       },
       "detail": {
         "back": "All updates",

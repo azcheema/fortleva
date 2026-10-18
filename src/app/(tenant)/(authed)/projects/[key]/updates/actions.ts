@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { resolveTimeZone } from "@/i18n/resolve";
 import { runAction, type ActionResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 import {
@@ -14,7 +15,9 @@ import {
   publishUpdate,
   readComposerContext,
   retractUpdate,
+  scheduleUpdate,
   setUpdateVisibility,
+  unscheduleUpdate,
   updateUpdateDraft,
   UPDATE_EDIT_NOTE_MAX,
   UPDATE_TITLE_MAX,
@@ -69,7 +72,9 @@ const revalidate = (key: string) => {
 
 const invalid = (): ActionResult<never> => ({ ok: false, message: "" });
 
-export async function saveUpdateDraftAction(raw: SaveDraftInput): Promise<ActionResult<{ id: string }>> {
+export async function saveUpdateDraftAction(
+  raw: SaveDraftInput,
+): Promise<ActionResult<{ id: string; updatedAt: string }>> {
   const parsed = draftInput.safeParse(raw);
   if (!parsed.success) return invalid();
   const input = parsed.data;
@@ -82,26 +87,84 @@ export async function saveUpdateDraftAction(raw: SaveDraftInput): Promise<Action
       periodEnd: input.periodEnd,
       body: input.body,
     };
-    return input.id === null
-      ? createUpdateDraft(ctx, input.projectId, fields)
-      : updateUpdateDraft(ctx, input.id, fields);
+    const saved =
+      input.id === null ? await createUpdateDraft(ctx, input.projectId, fields) : await updateUpdateDraft(ctx, input.id, fields);
+    // The version the WRITE returned — what Publish and Schedule bind to.
+    return { id: saved.id, updatedAt: saved.updatedAt.toISOString() };
   });
   if (r.ok) revalidate(input.projectKey);
   return r;
 }
 
 const verbInput = z.object({ projectKey: keyShape, id: uuid });
+/** The draft's version as the composer's own save returned it (slice 135). */
+const expected = z.iso.datetime().optional();
 
 export async function publishUpdateAction(raw: {
   projectKey: string;
   id: string;
   visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  expectedUpdatedAt?: string;
 }): Promise<ActionResult<UpdatePublished>> {
-  const parsed = verbInput.extend({ visibility }).safeParse(raw);
+  const parsed = verbInput.extend({ visibility, expectedUpdatedAt: expected }).safeParse(raw);
   if (!parsed.success) return invalid();
-  const { projectKey, id, visibility: audience } = parsed.data;
+  const { projectKey, id, visibility: audience, expectedUpdatedAt } = parsed.data;
   const ctx = await ctxOf();
-  const r = await runAction(updatesPath(projectKey, `/${id}`), () => publishUpdate(ctx, id, { visibility: audience }));
+  const r = await runAction(updatesPath(projectKey, `/${id}`), () =>
+    publishUpdate(ctx, id, {
+      visibility: audience,
+      ...(expectedUpdatedAt ? { expectedUpdatedAt: new Date(expectedUpdatedAt) } : {}),
+    }),
+  );
+  if (r.ok) revalidate(projectKey);
+  return r;
+}
+
+/**
+ * Schedule a draft to publish at a whole hour (slice 135, C112). The ZONE is
+ * the session's (`resolveTimeZone` — the one the page drew the picker in),
+ * never a form field; the service validates the day, the hour and the bounds.
+ */
+export async function scheduleUpdateAction(raw: {
+  projectKey: string;
+  id: string;
+  visibility: "INTERNAL" | "CLIENT_VISIBLE";
+  date: string;
+  hour: number;
+  expectedUpdatedAt?: string;
+}): Promise<ActionResult<{ scheduledFor: string }>> {
+  const parsed = verbInput
+    .extend({
+      visibility,
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      hour: z.number().int().min(0).max(23),
+      expectedUpdatedAt: expected,
+    })
+    .safeParse(raw);
+  if (!parsed.success) return invalid();
+  const { projectKey, id, visibility: audience, date, hour, expectedUpdatedAt } = parsed.data;
+  const ctx = await ctxOf();
+  const timeZone = await resolveTimeZone();
+  const r = await runAction(updatesPath(projectKey, `/${id}`), async () => {
+    const { scheduledFor } = await scheduleUpdate(ctx, id, {
+      visibility: audience,
+      date,
+      hour,
+      timeZone,
+      ...(expectedUpdatedAt ? { expectedUpdatedAt: new Date(expectedUpdatedAt) } : {}),
+    });
+    return { scheduledFor: scheduledFor.toISOString() };
+  });
+  if (r.ok) revalidate(projectKey);
+  return r;
+}
+
+export async function unscheduleUpdateAction(raw: { projectKey: string; id: string }): Promise<ActionResult<void>> {
+  const parsed = verbInput.safeParse(raw);
+  if (!parsed.success) return invalid();
+  const { projectKey, id } = parsed.data;
+  const ctx = await ctxOf();
+  const r = await runAction(updatesPath(projectKey, `/${id}`), () => unscheduleUpdate(ctx, id));
   if (r.ok) revalidate(projectKey);
   return r;
 }

@@ -726,6 +726,17 @@ export const AUDIT_EVENTS = {
   // step (0 the due day, 1 and 2 the working days after) and how many
   // received it — never a name.
   "project_update.reminder_sent": TENANT,
+  // Slice 135 (C112): a draft SCHEDULED to publish at an hour — by a member
+  // holding `project_update:publish` (metadata: the hour, the audience, and
+  // `movedFrom` when it moved), taken off its schedule (the hour it had), and
+  // a schedule the hourly job REFUSED, written as SYSTEM (metadata: the
+  // reason — not_allowed, archived, empty, private_named, late — the hour
+  // and `scheduledBy`; the scheduler is told in the inbox). The job's
+  // PUBLISH is `project_update.published` with `scheduled: true` and
+  // `scheduledBy`, as SYSTEM; `unscheduled` names whose schedule it was.
+  "project_update.scheduled": TENANT,
+  "project_update.unscheduled": TENANT,
+  "project_update.schedule_failed": TENANT,
   // Phase 5 slice 105 (C73 (c), (d), (g)): the workspace's progress-update
   // LAYOUTS, edited under `settings:edit`. Target: the layout. Metadata:
   // field names on an edit; on a delete, how many projects went back to the

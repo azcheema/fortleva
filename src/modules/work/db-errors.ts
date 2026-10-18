@@ -92,6 +92,16 @@ const WORK_TOKENS: DbErrorTokens = [
   // belt catching a race — two members acting on one post in the same
   // second — and it is worth a sentence rather than a stack.
   ["UPDATE_IMMUTABLE", "UPDATE_IMMUTABLE"],
+  // A scheduled update is locked (20261103090000, slice 135, C112 (a)): the
+  // service refuses an edit first, so the trigger's raise is an edit that
+  // read the draft before it was scheduled. Matched on the RAISE's own text,
+  // never the bare code: outside production Prisma prints the caller's
+  // source lines into the message, and `fail("UPDATE_SCHEDULED")` sits beside
+  // those queries (both reviews; the `comment_visible_no_mention` lesson).
+  // A schedule written onto a row that stopped being a draft in the same
+  // moment is the CHECK's.
+  ["UPDATE_SCHEDULED: a scheduled update", "UPDATE_SCHEDULED"],
+  ["project_update_schedule_draft_only", "UPDATE_NOT_DRAFT"],
   // The progress-update layouts (20261008200000, slice 105): a name the
   // workspace already uses, whatever its case (the expression UNIQUE —
   // `update-templates.ts` asks first, so this is the race); two members

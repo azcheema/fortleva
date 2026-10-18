@@ -105,7 +105,7 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
    * — INSTANT because an alarm must not wait for a digest. The next test
    * pins that it never mails through `emailAllowed`, at any level.
    */
-  it("the instant set is assignment, mention, the eight client-caused kinds, the three renewal reminders, the door's alarm, the update reminder and Fortnox's stop — and nothing else", () => {
+  it("the instant set is assignment, mention, the eight client-caused kinds, the three renewal reminders, the door's alarm, the update reminder, a scheduled update that did not go out and Fortnox's stop — and nothing else", () => {
     const instant = Object.entries(NOTIFICATION_KINDS)
       .filter(([, s]) => s.class === "INSTANT")
       .map(([k]) => k)
@@ -145,11 +145,24 @@ describe("notification kind catalog (§6.18; PLAN §2 tripwire)", () => {
       // A project's progress update is due or late (Phase 5 slice 102,
       // C70): the receiver's own job on a day — a digest is a day late.
       "project_update.due",
+      // A scheduled update that did not go out (slice 135, C112 (d)): the
+      // scheduler's own post, to see the next time they look — inbox only.
+      "project_update.schedule_failed",
       "work_item.assigned",
       "work_item.client_commented",
       "work_item.completed_by_contact",
       "work_item.request_received",
     ]);
+  });
+
+  /**
+   * C112 (d) chose an inbox note: the kind names no email, so it is never
+   * mailed (or pushed) on its own — only COUNTED in the member's opt-in
+   * summary email, as every unread kind is (`SUMMARY_LINES`).
+   */
+  it("a scheduled update that did not go out is never mailed on its own", () => {
+    expect(NOTIFICATION_KINDS["project_update.schedule_failed"].email).toBeUndefined();
+    expect(emailAllowed("ALL", "project_update.schedule_failed")).toBe(false);
   });
 
   /** An update reminder is the receiver's own job, not a mention (slice 102). */

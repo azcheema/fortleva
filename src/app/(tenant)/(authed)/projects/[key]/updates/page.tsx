@@ -72,7 +72,8 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
     : null;
   // When it is due or late, the way in is the newest draft if there is one —
   // a second draft beside a half-written one helps nobody.
-  const draft = list.updates.find((u) => u.status === "DRAFT") ?? null;
+  // A SCHEDULED draft is locked (slice 135), so it is never the way in.
+  const draft = list.updates.find((u) => u.status === "DRAFT" && !u.scheduled) ?? null;
   const writeHref = draft ? `${base}/${draft.id}` : `${base}/new`;
 
   return (
@@ -177,9 +178,25 @@ export default async function ProjectUpdatesPage({ params }: { params: Promise<{
                         {u.excerpt ? <span className="truncate text-xs text-muted-foreground">{u.excerpt}</span> : null}
                       </span>
                       <HealthChip value={u.health} />
-                      <Badge variant={STATUS_VARIANT[u.status]}>{t(`status.${u.status}`)}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {format.dateTime(u.publishedAt ?? u.updatedAt, { year: "numeric", month: "short", day: "numeric" })}
+                      {u.scheduled ? (
+                        // Slice 135 (C112): a scheduled draft says when it goes out, in the reader's zone.
+                        <Badge variant="brand" data-testid="update-scheduled-chip">
+                          {t("status.SCHEDULED")}
+                        </Badge>
+                      ) : (
+                        <Badge variant={STATUS_VARIANT[u.status]}>{t(`status.${u.status}`)}</Badge>
+                      )}
+                      <span className="num text-xs text-muted-foreground">
+                        {u.scheduled
+                          ? format.dateTime(u.scheduled.at, {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hourCycle: "h23",
+                            })
+                          : format.dateTime(u.publishedAt ?? u.updatedAt, { year: "numeric", month: "short", day: "numeric" })}
                         {u.authorName ? ` · ${u.authorName}` : ""}
                       </span>
                     </Link>

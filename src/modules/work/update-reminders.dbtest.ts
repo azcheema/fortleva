@@ -427,3 +427,59 @@ describe("the reminders", () => {
   // The contact plane's zero rows are the isolation suite's: it walks every
   // class-A model in `RLS_CLASSES.A`, this table included.
 });
+
+/**
+ * A SCHEDULED POST QUIETS ITS ROUND — AND ONLY ITS ROUND (slice 135; the
+ * reviews' mediums, the re-checks' M1 and L1). Its own project, UPS, like UPA
+ * (the manager leads it, its last post was Friday 6 June, so it is due Friday
+ * 13 June), made here so no count above moves. The schedule is WRITTEN, not
+ * made with `scheduleUpdate` — whose bound is 90 days from the real clock —
+ * because this file's clock is June 2031.
+ */
+describe("a scheduled post and the reminders (slice 135)", () => {
+  it("one going out before the next round's day quiets the round; one for a later round silences nothing", async () => {
+    const manager = f.seats.manager.memberId;
+    P["UPS"] = randomUUID();
+    await f.platform.project.create({
+      data: {
+        id: P["UPS"],
+        tenantId: f.tenantId,
+        clientId: acme,
+        key: "UPS",
+        name: "Project UPS",
+        status: "ACTIVE",
+        updateCadence: "WEEKLY",
+        leadMemberId: manager,
+      },
+    });
+    await f.platform.memberProject.create({ data: { tenantId: f.tenantId, memberId: manager, projectId: P["UPS"] } });
+    await plantPost("UPS", at(6));
+    const draft = await f.platform.projectUpdate.create({
+      data: {
+        tenantId: f.tenantId,
+        clientId: acme,
+        projectId: P["UPS"],
+        health: "ON_TRACK",
+        body: { sections: [], metrics: {} },
+        bodyText: "scheduled",
+        authorMemberId: manager,
+        // Monday 16 June, 09:00 in Stockholm: before the next round (Friday 20 June).
+        scheduledFor: at(16, "07:00"),
+        scheduledByMemberId: manager,
+        scheduledVisibility: "INTERNAL",
+      },
+      select: { id: true },
+    });
+
+    // The due day: everything else was reminded above; UPS, in hand, is not.
+    await sendUpdateReminders(f.tenantId, at(13));
+    expect(await receiversOf("UPS")).toEqual([]);
+    expect(await rowsOf("UPS")).toEqual([]);
+
+    // Moved to Wednesday 25 June — the NEXT round's: Monday's reminder goes.
+    await f.platform.projectUpdate.update({ where: { id: draft.id }, data: { scheduledFor: at(25, "07:00") } });
+    await sendUpdateReminders(f.tenantId, at(16));
+    expect(await receiversOf("UPS")).toEqual([manager]);
+    expect(await rowsOf("UPS")).toEqual(["2031-06-13#1"]);
+  });
+});

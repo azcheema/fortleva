@@ -179,6 +179,16 @@ export function readUpdateBody(stored: unknown): UpdateBody {
 /** The fifteen-minute retraction window (DATA_MODEL.md §6.16) — the trigger applies the same number. */
 export const UPDATE_RETRACT_WINDOW_MS = 15 * 60 * 1000;
 
+/** How far ahead a progress update may be scheduled (slice 135, C112) — the dialog's bound and the service's. */
+export const UPDATE_SCHEDULE_MAX_DAYS = 90;
+
+/**
+ * How late the job may still publish a scheduled update (slice 135): past
+ * this, a run that did not happen for a day must not send last week's post
+ * today — the schedule is cleared and its scheduler told.
+ */
+export const UPDATE_SCHEDULE_LATE_MS = 24 * 60 * 60 * 1000;
+
 /** A bullet list of plain lines, as the JSON the editor's schema accepts. */
 export const bulletListOf = (lines: readonly string[]) => ({
   type: "bulletList",

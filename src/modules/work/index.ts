@@ -267,7 +267,9 @@ export {
   publishUpdate,
   readComposerContext,
   retractUpdate,
+  scheduleUpdate,
   setUpdateVisibility,
+  unscheduleUpdate,
   updateUpdateDraft,
   privateWorkNamed,
   type ComposerContext,
@@ -278,14 +280,18 @@ export {
   type UpdateList,
   type UpdateListEntry,
   type UpdatePublished,
+  type UpdateSchedule,
   type UpdateStatus,
   type UpdateVisibility,
 } from "./updates";
+// Slice 135 (C112): the hourly job's publish of scheduled updates.
+export { publishScheduledUpdates } from "./scheduled-updates";
 export {
   ALL_METRICS_INCLUDED,
   UPDATE_EDIT_NOTE_MAX,
   UPDATE_METRIC_GROUPS,
   UPDATE_RETRACT_WINDOW_MS,
+  UPDATE_SCHEDULE_MAX_DAYS,
   UPDATE_SECTION_KEYS,
   UPDATE_TITLE_MAX,
   readUpdateBody,

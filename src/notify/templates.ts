@@ -475,6 +475,19 @@ const COPY: Record<EmailTemplateKey, Record<"en" | "sv", Copy>> = {
       body: "Ett projekt du ansvarar för ska ha en lägesuppdatering i dag. Öppna fliken Uppdateringar i projektet för att skriva den.",
     },
   },
+  // Slice 135 (C112 (d)) — INBOX ONLY: the kind names no `email`, so this copy
+  // is never mailed; the record wants one per kind (`COPY`'s type). LINKS, NOT
+  // DATA, as the reminder above.
+  "project_update.schedule_failed": {
+    en: {
+      subject: "A scheduled update couldn't go out",
+      body: "A progress update you scheduled was not published. It is still there as a draft — open the project's Updates tab to publish or schedule it again.",
+    },
+    sv: {
+      subject: "En schemalagd uppdatering kunde inte publiceras",
+      body: "En lägesuppdatering som du schemalade publicerades inte. Den finns kvar som utkast — öppna fliken Uppdateringar i projektet för att publicera eller schemalägga den igen.",
+    },
+  },
   // Phase 4 slice 112b2 — the client's signer decided a contract: to its sender
   // (C85 (a)), or to the owners when the sender has left (C85 (f)) — so the
   // copy says "a contract", never "you sent". LINKS, NOT DATA: neither the

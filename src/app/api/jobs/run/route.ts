@@ -15,6 +15,7 @@ import { drainOutboxKick } from "@/jobs/outbox-kick";
 import { runPushes } from "@/jobs/push-sweep";
 import { runRepeatingTasks } from "@/jobs/repeating-tasks";
 import { runReportDrafts } from "@/jobs/report-drafts";
+import { runScheduledUpdates } from "@/jobs/scheduled-updates";
 import { runSealedAskMail } from "@/jobs/sealed-requests";
 import { runBudgetAlerts, runTimeSweep } from "@/jobs/time-sweep";
 import { runUpdateReminders } from "@/jobs/update-reminders";
@@ -71,6 +72,9 @@ import { runWeeklyReminders } from "@/jobs/weekly-reminders";
  * and the repeating tasks (slice 127 — on each repeat day a series' newest
  * task gets its next copy, private, and its assignee is told; it MAKES TASKS
  * in every sending workspace, deletes nothing),
+ * and the scheduled progress updates (slice 135 — every draft whose chosen
+ * hour has come is PUBLISHED, to the client when that was the choice, as the
+ * member who scheduled it if they still may; in every sending workspace),
  * — and, since slice 122 (founder decision C98, going live), Vercel Cron
  * calls it every hour with GET (`vercel.json`), its `CRON_SECRET` the gate;
  * mail additionally leaves every five minutes through `/api/jobs/outbox`.
@@ -123,6 +127,18 @@ async function runAll(): Promise<NextResponse> {
   // bounds); the light kick at /api/jobs/outbox runs the same drain every
   // five minutes, so mail never waits for this hourly run.
   const outbox = await drainOutboxKick();
+  // Slice 135 (C112): scheduled progress updates — SECOND, so a post chosen
+  // for 09:00 goes out minutes after the hour rather than after every other
+  // job; and BEFORE the update reminders, so a post published now clears
+  // today's reminder. Within 45 seconds of its own. Its failure is its own.
+  let scheduledUpdates: Awaited<ReturnType<typeof runScheduledUpdates>> | { failed: "discovery" };
+  try {
+    scheduledUpdates = await runScheduledUpdates();
+  } catch (e) {
+    const code = typeof e === "object" && e !== null && "code" in e ? ` (${String((e as { code: unknown }).code)})` : "";
+    console.error(`jobs: scheduled updates failed: ${e instanceof Error ? e.name : typeof e}${code}`);
+    scheduledUpdates = { failed: "discovery" };
+  }
   const timeSweep = await runTimeSweep();
   const budgets = await runBudgetAlerts();
   // Reminders enqueue; the NEXT drain sends them. Draining again here
@@ -259,6 +275,7 @@ async function runAll(): Promise<NextResponse> {
   }
   return NextResponse.json({
     outbox,
+    scheduledUpdates,
     timeSweep,
     budgets,
     weeklyReminders,

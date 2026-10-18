@@ -201,6 +201,21 @@ export function reminderStepOn(dueOn: string, today: string): number | null {
   return step <= UPDATE_REMINDER_LAST_STEP ? step : null;
 }
 
+/**
+ * The day the round AFTER `slot`'s falls on (slice 135): a post scheduled to
+ * go out before it belongs to `slot`'s round, so that round is in hand — no
+ * reminder, no due or late badge; one scheduled for a later round silences
+ * nothing. Every 7 days weekly, 14 fortnightly, the chosen weekday of the
+ * next month monthly (`reminderSlotOn`'s own rounds). The second re-check's
+ * L1 moved it here from "the round's last reminder day": between rounds, a
+ * post scheduled for tomorrow must quiet the late badge too.
+ */
+export function nextRoundDayOf(cadence: Exclude<UpdateCadenceValue, "NONE">, weekday: UpdateWeekday, slot: string): string {
+  if (cadence === "WEEKLY") return addDays(slot, 7);
+  if (cadence === "BIWEEKLY") return addDays(slot, 14);
+  return firstDueDayOnOrAfter("MONTHLY", weekday, addDays(slot, 1));
+}
+
 /** The project columns the rule reads — one shape for the job and the page. */
 export type ScheduledProject = {
   readonly status: string;

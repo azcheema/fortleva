@@ -322,6 +322,12 @@ Fields that are empty, and matrices nobody has asked for yet, wait behind one 28
 - **Earlier days.** A page is seven days, at most 300 events; **Show earlier** at the foot goes on — inside the same day when a page was cut, else to the seven days ending on the newest earlier event (empty weeks are skipped, a year at a time); "That's all — nothing happened before this." when there is none; **Back to today** once earlier.
 - **Empty.** Nothing ever: "Nothing has happened yet" with **Go to projects**; nothing for the filters: "Nothing happened here" with **Clear filters**.
 
+### 5.20 Scheduling a progress update *(slice 135, founder decision C112)*
+- **Where.** The publish dialog (Updates → a draft → **Publish**) gains **When**: *Now* / *Later* — offered to a member who may publish. Later shows **Day** (a date field, today to 90 days ahead, tomorrow first) and **Time** (00:00–23:00, the summary email's picker) with the zone named under it; the button reads **Schedule**. The audience choice and the private-work warning are unchanged — except that for the client, a post naming private work cannot be scheduled: Schedule waits, with a sentence saying why (nobody would be there to take it out).
+- **After.** A toast "Scheduled for Mon, Oct 19, 09:00." and the update's page, which for a scheduled post is the post as it will read — never the composer (C112 (a): locked) — under an info banner "Scheduled for Monday 19 October 09:00" saying to whom it goes (the client; the client once the portal is on, when it is off; or the team), who scheduled it, the zone, that the numbers are counted when it goes out and that it can't be changed until unscheduled; and **Unschedule** (publish code), which makes it a draft again. No Discard while scheduled.
+- **The list.** A scheduled post wears a **Scheduled** chip (brand tone) and its hour instead of a date; it is never the "write the update" way in.
+- **Out.** The hourly run publishes it a few minutes after its hour (C112 (c)). If it cannot, its scheduler gets an inbox row "A scheduled update couldn't go out" (silenced megaphone), linking to the project's Updates tab (C112 (d)).
+
 ---
 
 ## 6. Keyboard map (scopes `global`, `board`, `backlog`, `home`, `inbox`, `triage`, `item`, `modal`; shown in `?` and the ⌘K palette)

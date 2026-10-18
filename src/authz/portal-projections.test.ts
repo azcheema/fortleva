@@ -96,6 +96,9 @@ export const PORTAL_FORBIDDEN_COLUMNS = [
   // ever asking.
   "changesSinceLast",
   "publishedByMemberId",
+  // Slice 135: who scheduled a draft — a member, and the CHECK keeps it NULL
+  // on every published row, so a projection asking for it is asking wrong.
+  "scheduledByMemberId",
   "internalSnapshot",
   "projectUpdateInternalSnapshot",
   "byMember",
@@ -474,6 +477,7 @@ describe("portal projections never touch INTERNAL-only columns", () => {
       "invitedById",
       "changesSinceLast",
       "publishedByMemberId",
+      "scheduledByMemberId",
       "internalSnapshot",
       "projectUpdateInternalSnapshot",
       "byMember",

@@ -5,10 +5,13 @@ import { nextCounter, withTenant, type TenantDb } from "@/db";
 import { accessibleCodes, requireAccess } from "@/entitlements/resolver";
 import type { ProjectHealth } from "@/generated/prisma/enums";
 import { fail } from "@/lib/domain-error";
-import { dateColumn, isoDateOf, localDateString } from "@/lib/duration";
+import { todayIn } from "@/lib/due-date";
+import { dateColumn, isoDateOf, localDateString, localHourInstant } from "@/lib/duration";
+import { addDays } from "@/lib/week";
 import { MAX_TITLE_LENGTH } from "@/lib/work-view/model";
 import { revealCostRates } from "@/modules/time/rates";
 import { loadProjectEntries, type EntryRow } from "@/modules/time/rollup";
+import { isTimezone } from "@/preferences/config";
 import { readPreferences } from "@/preferences/service";
 
 import { guarded } from "./db-errors";
@@ -16,6 +19,7 @@ import { principalOf, type WorkCtx } from "./states";
 import {
   UPDATE_EDIT_NOTE_MAX,
   UPDATE_RETRACT_WINDOW_MS,
+  UPDATE_SCHEDULE_MAX_DAYS,
   UPDATE_TITLE_MAX,
   normalizeUpdateBody,
   readUpdateBody,
@@ -95,6 +99,17 @@ export type UpdateListEntry = {
   readonly updatedAt: Date;
   /** The first line or so of the post, for a list row. */
   readonly excerpt: string | null;
+  /**
+   * A DRAFT scheduled to publish (slice 135, C112): the hour, the audience
+   * chosen, and who scheduled it — null for every other post.
+   */
+  readonly scheduled: UpdateSchedule | null;
+};
+
+export type UpdateSchedule = {
+  readonly at: Date;
+  readonly visibility: UpdateVisibility;
+  readonly byName: string | null;
 };
 
 export type UpdateCaps = {
@@ -153,6 +168,9 @@ const listSelect = {
   bodyText: true,
   createdAt: true,
   updatedAt: true,
+  scheduledFor: true,
+  scheduledVisibility: true,
+  scheduledByMemberId: true,
 } as const;
 
 type ListRow = {
@@ -169,7 +187,14 @@ type ListRow = {
   bodyText: string | null;
   createdAt: Date;
   updatedAt: Date;
+  scheduledFor: Date | null;
+  scheduledVisibility: UpdateVisibility | null;
+  scheduledByMemberId: string | null;
 };
+
+/** Every member id a list row names — its author, and who scheduled it. */
+const namedIds = (r: ListRow): string[] =>
+  r.scheduledByMemberId ? [r.authorMemberId, r.scheduledByMemberId] : [r.authorMemberId];
 
 const EXCERPT_CHARS = 200;
 
@@ -194,6 +219,14 @@ const toEntry = (r: ListRow, names: ReadonlyMap<string, string>): UpdateListEntr
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
   excerpt: excerptOf(r.bodyText),
+  scheduled:
+    r.scheduledFor && r.scheduledVisibility
+      ? {
+          at: r.scheduledFor,
+          visibility: r.scheduledVisibility,
+          byName: r.scheduledByMemberId ? (names.get(r.scheduledByMemberId) ?? null) : null,
+        }
+      : null,
 });
 
 /** Member display names for attribution columns that carry no FK. */
@@ -269,7 +302,7 @@ function draftColumns(input: UpdateDraftInput) {
   };
 }
 
-type ProjectRow = {
+export type ProjectRow = {
   id: string;
   key: string;
   clientId: string;
@@ -284,7 +317,7 @@ type ProjectRow = {
   updateTemplateId: string | null;
 };
 
-const projectSelect = {
+export const projectSelect = {
   id: true,
   key: true,
   clientId: true,
@@ -315,6 +348,8 @@ type UpdateRow = {
   publishedAt: Date | null;
   seq: number | null;
   updatedAt: Date;
+  /** Set while a draft waits to be published by the job — and then it is LOCKED (C112 (a)). */
+  scheduledFor: Date | null;
 };
 
 /** The update, in scope, with its status — every verb starts here. */
@@ -330,6 +365,7 @@ async function loadUpdate(tx: TenantDb, ctx: WorkCtx, id: string): Promise<Updat
       publishedAt: true,
       seq: true,
       updatedAt: true,
+      scheduledFor: true,
     },
   });
   if (!row) deny("NOT_FOUND");
@@ -373,7 +409,7 @@ export async function listUpdates(ctx: WorkCtx, projectId: string): Promise<Upda
       orderBy: [{ publishedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
       take: 200,
     });
-    const names = await memberNames(tx, ctx.tenantId, rows.map((r) => r.authorMemberId));
+    const names = await memberNames(tx, ctx.tenantId, rows.flatMap(namedIds));
     const updates = rows.map((r) => toEntry(r, names));
     const latest = updates.find((u) => u.status === "PUBLISHED") ?? null;
     const caps = capsOf(await heldCodes(tx, ctx));
@@ -404,7 +440,7 @@ export async function getUpdate(ctx: WorkCtx, id: string): Promise<UpdateDetail>
     const names = await memberNames(
       tx,
       ctx.tenantId,
-      [row.authorMemberId, row.publishedByMemberId].filter((x): x is string => x !== null),
+      [...namedIds(row), row.publishedByMemberId].filter((x): x is string => x !== null),
     );
     const held = await heldCodes(tx, ctx);
     const caps = capsOf(held);
@@ -479,6 +515,8 @@ export type ComposerContext = {
    * standard (`resolveUpdateLayout`).
    */
   readonly layout: UpdateLayout;
+  /** The member may publish — and so schedule (slice 135); the dialog offers Later only then. */
+  readonly canPublish: boolean;
 };
 
 /**
@@ -518,10 +556,12 @@ export async function readComposerContext(
     // The preview shows the AUTHOR the numbers as they may see them
     // live (the same rule as `getUpdate`); publish freezes the complete
     // block for the client regardless, which the toggle's copy says.
-    const access = hoursAccessOf(await heldCodes(tx, ctx));
+    const held = await heldCodes(tx, ctx);
+    const access = hoursAccessOf(held);
     // In sequence, after the batch above (AGENTS.md's standing trap).
     const { layout } = await resolveUpdateLayout(tx, ctx.tenantId, project.updateTemplateId);
     return {
+      canPublish: held.has("project_update:publish"),
       layout,
       changes,
       metrics: redactHoursFor(metrics, access),
@@ -562,34 +602,89 @@ export async function privateWorkNamed(
   projectId: string,
   lines: readonly string[],
 ): Promise<string[]> {
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:create");
+    const project = await loadProject(tx, ctx, projectId);
+    return privateNamesIn(tx, ctx.tenantId, project.id, lines);
+  });
+}
+
+/**
+ * `privateWorkNamed`'s rule inside a transaction the caller has authorised —
+ * the dialog's check, and the hourly job's own at the moment a scheduled
+ * post goes out (slice 135's security review: a post can wait 90 days,
+ * locked, while a task it names turns private).
+ */
+export async function privateNamesIn(
+  tx: TenantDb,
+  tenantId: string,
+  projectId: string,
+  lines: readonly string[],
+): Promise<string[]> {
+  // Only lines that COULD be a title are counted against the cap — blank
+  // lines and long paragraphs first go (the re-check's L2: the job hands in a
+  // whole post's lines, the dialog only candidates). A title's length plus
+  // room for a leading task key, as the composer's own filter.
+  const candidates = lines
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && l.length <= MAX_TITLE_LENGTH + 16)
+    .slice(0, NAMED_MAX_LINES);
   const wanted = [
     ...new Set(
-      lines
-        .slice(0, NAMED_MAX_LINES)
-        .flatMap((l) => {
-          const line = l.trim();
+      candidates
+        .flatMap((line) => {
           const unkeyed = line.replace(KEY_PREFIX, "");
           return unkeyed === line ? [line] : [line, unkeyed];
         })
         .filter((l) => l.length > 0 && l.length <= MAX_TITLE_LENGTH),
     ),
   ];
-  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
-    await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:create");
-    const project = await loadProject(tx, ctx, projectId);
-    if (wanted.length === 0) return [];
-    const tasks = await tx.workItem.findMany({
-      where: { tenantId: ctx.tenantId, projectId: project.id, visibility: "INTERNAL", deletedAt: null, title: { in: wanted } },
-      select: { title: true },
-      take: 50,
-    });
-    const milestones = await tx.milestone.findMany({
-      where: { tenantId: ctx.tenantId, projectId: project.id, visibility: "INTERNAL", name: { in: wanted } },
-      select: { name: true },
-      take: 50,
-    });
-    return [...new Set([...tasks.map((t) => t.title), ...milestones.map((m) => m.name)])];
+  if (wanted.length === 0) return [];
+  const tasks = await tx.workItem.findMany({
+    where: { tenantId, projectId, visibility: "INTERNAL", deletedAt: null, title: { in: wanted } },
+    select: { title: true },
+    take: 50,
   });
+  const milestones = await tx.milestone.findMany({
+    where: { tenantId, projectId, visibility: "INTERNAL", name: { in: wanted } },
+    select: { name: true },
+    take: 50,
+  });
+  return [...new Set([...tasks.map((t) => t.title), ...milestones.map((m) => m.name)])];
+}
+
+/**
+ * The lines a saved post is made of — its title, its own headings, every
+ * line of its sections — as the composer hands the dialog's check (slice
+ * 135: the job reads them from the row). Read from the section DOCUMENTS,
+ * not `bodyText`: the editor's `getText({ blockSeparator: "\n" })` makes a
+ * line of every block AND of every hard break inside one (a pasted soft
+ * line is a `hardBreak`), while the stored text folds a hard break into a
+ * space (the re-check's L1).
+ */
+export function linesOfPost(title: string | null, body: UpdateBody): string[] {
+  return [
+    title ?? "",
+    ...body.sections.flatMap((s) => (s.key === "CUSTOM" && s.title ? [s.title] : [])),
+    ...body.sections.flatMap((s) => docText(s.body).split("\n")),
+  ];
+}
+
+/** A ProseMirror JSON node's text as the editor reads it: blocks and hard breaks end lines. */
+function docText(node: unknown): string {
+  if (typeof node !== "object" || node === null) return "";
+  const n = node as { type?: unknown; text?: unknown; content?: unknown };
+  if (n.type === "text") return typeof n.text === "string" ? n.text : "";
+  if (n.type === "hardBreak") return "\n";
+  const kids: unknown[] = Array.isArray(n.content) ? n.content : [];
+  // A block of inline content (a paragraph, a heading) joins its pieces as
+  // they stand; a block of blocks (a list, a table, the document) puts each
+  // on its own line.
+  const inline = kids.every((k) => {
+    const t = typeof k === "object" && k !== null ? (k as { type?: unknown }).type : null;
+    return t === "text" || t === "hardBreak";
+  });
+  return kids.map(docText).join(inline ? "" : "\n");
 }
 
 // ── Drafts ───────────────────────────────────────────────────────────
@@ -606,7 +701,7 @@ export async function createUpdateDraft(
   ctx: WorkCtx,
   projectId: string,
   input: UpdateDraftInput,
-): Promise<{ id: string }> {
+): Promise<{ id: string; updatedAt: Date }> {
   const columns = draftColumns(input);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
@@ -621,7 +716,7 @@ export async function createUpdateDraft(
           authorMemberId: ctx.actor.memberId,
           ...columns,
         },
-        select: { id: true },
+        select: { id: true, updatedAt: true },
       });
       await record(tx, {
         action: "project_update.drafted",
@@ -629,21 +724,31 @@ export async function createUpdateDraft(
         targetId: row.id,
         metadata: { projectId: project.id },
       });
-      return { id: row.id };
+      return { id: row.id, updatedAt: row.updatedAt };
     }),
   );
 }
 
 /** project_update:create — edit a draft (any draft of the project). Routine: no audit (see `createUpdateDraft`). */
-export async function updateUpdateDraft(ctx: WorkCtx, id: string, input: UpdateDraftInput): Promise<{ id: string }> {
+export async function updateUpdateDraft(
+  ctx: WorkCtx,
+  id: string,
+  input: UpdateDraftInput,
+): Promise<{ id: string; updatedAt: Date }> {
   const columns = draftColumns(input);
   return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
     guarded(async () => {
       await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:create");
       const row = await loadUpdate(tx, ctx, id);
       if (row.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
-      await tx.projectUpdate.update({ where: { id: row.id }, data: columns, select: { id: true } });
-      return { id: row.id };
+      // Locked while scheduled (C112 (a)); the trigger is the belt for an
+      // edit that read the draft before it was scheduled.
+      if (row.scheduledFor) fail("UPDATE_SCHEDULED");
+      // `updatedAt` from the write itself (RETURNING) — the version token the
+      // composer's Publish and Schedule then bind to (AGENTS.md: a CAS token
+      // comes from RETURNING, never from what was sent).
+      const saved = await tx.projectUpdate.update({ where: { id: row.id }, data: columns, select: { id: true, updatedAt: true } });
+      return { id: saved.id, updatedAt: saved.updatedAt };
     }),
   );
 }
@@ -655,7 +760,20 @@ export async function discardUpdateDraft(ctx: WorkCtx, id: string): Promise<void
       await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:create");
       const row = await loadUpdate(tx, ctx, id);
       if (row.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
-      await tx.projectUpdate.delete({ where: { id: row.id }, select: { id: true } });
+      // Unschedule first (C112 (a)) — by someone who may publish, as the
+      // schedule was. The database cannot hold this one (a delete guard would
+      // refuse the project's cascade), so the delete is bound to the row
+      // still being unscheduled: a schedule written in between is a zero-row
+      // delete, never a scheduled post deleted unseen.
+      if (row.scheduledFor) fail("UPDATE_SCHEDULED");
+      const gone = await tx.projectUpdate.deleteMany({ where: { tenantId: ctx.tenantId, id: row.id, scheduledFor: null } });
+      if (gone.count !== 1) {
+        // Scheduled in between — or already deleted by someone else, whose
+        // own discard recorded it.
+        const still = await tx.projectUpdate.findFirst({ where: { tenantId: ctx.tenantId, id: row.id }, select: { id: true } });
+        if (still) fail("UPDATE_SCHEDULED");
+        return;
+      }
       await record(tx, {
         action: "project_update.draft_discarded",
         targetType: "ProjectUpdate",
@@ -687,67 +805,33 @@ export async function discardUpdateDraft(ctx: WorkCtx, id: string): Promise<void
 export async function publishUpdate(
   ctx: WorkCtx,
   id: string,
-  input: { readonly visibility: UpdateVisibility },
+  input: {
+    readonly visibility: UpdateVisibility;
+    /**
+     * The version the composer's own save returned (slice 135's security
+     * review): a save by somebody else since is UPDATE_CHANGED, never
+     * published unseen. Absent — a caller with no save of its own — the
+     * version this publish reads is the one it binds to, as before.
+     */
+    readonly expectedUpdatedAt?: Date;
+  },
 ): Promise<UpdatePublished> {
   // ── 1. What may this publisher freeze? ─────────────────────────────
   const prep = await withTenant(ctx.tenantId, principalOf(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:publish");
     const head = await loadUpdate(tx, ctx, id);
     if (head.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
+    // A scheduled post is the job's to publish, or Unschedule's to free (C112 (a)).
+    if (head.scheduledFor) fail("UPDATE_SCHEDULED");
+    if (input.expectedUpdatedAt && head.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) fail("UPDATE_CHANGED");
     const project = await loadProject(tx, ctx, head.projectId);
     if (project.archivedAt) fail("ARCHIVED");
-    const draft = await tx.projectUpdate.findFirstOrThrow({
-      where: { tenantId: ctx.tenantId, id: head.id },
-      select: { periodStart: true, periodEnd: true, body: true, bodyText: true },
-    });
-    if (draft.bodyText === null) fail("UPDATE_EMPTY");
-    // What this transaction READ is what the third one must FREEZE: the
-    // row's `updatedAt` is carried across and compared there, so a draft
-    // saved by somebody else in between is refused rather than published
-    // with a window, toggles or a body this transaction never saw
-    // (code review, slice 67).
-    const seenUpdatedAt = head.updatedAt;
-    const prefs = await readPreferences(tx, ctx.tenantId);
-    const previous = await previousPublished(tx, ctx.tenantId, project.id, head.id);
-    const window = metricsWindowFor(
-      {
-        periodStart: draft.periodStart ? isoDateOf(draft.periodStart) : null,
-        periodEnd: draft.periodEnd ? isoDateOf(draft.periodEnd) : null,
-        previous,
-        projectCreatedAt: project.createdAt,
-      },
-      prefs.timezone,
-    );
     // ONE resolution on all four gates (the same set the reads use); a ✦
     // code with a stale factor answers false here, so a publisher who
     // has not stepped up simply freezes no cost — never a redirect out
     // of a publish.
     const held = await accessibleCodes(tx, ctx.tenantId, ctx.actor, [...FIGURE_CODES]);
-    const seesTeam = held.has("time:view_team");
-    const seesBudget = held.has("budget:view");
-    const seesBill = held.has("rate:view_bill");
-    const seesCost = seesTeam && prefs.finance.costRatesEnabled && held.has("rate:view_cost");
-    const entries: EntryRow[] | null = seesTeam
-      ? await loadProjectEntries(tx, ctx.tenantId, project.id, {
-          from: localDateString(window.from, prefs.timezone),
-          to: localDateString(new Date(window.to.getTime() - 1), prefs.timezone),
-        })
-      : null;
-    const cardIds = entries
-      ? [...new Set(entries.map((r) => r.costRateCardId).filter((c): c is string => c !== null))]
-      : [];
-    return {
-      project,
-      window,
-      prefs,
-      seesBudget,
-      seesBill,
-      seesCost,
-      entries,
-      cardIds,
-      body: readUpdateBody(draft.body),
-      seenUpdatedAt,
-    };
+    return preparePublish(tx, ctx.tenantId, head, project, held);
   });
 
   // ── 2. The audited reveal, outside any transaction of ours ─────────
@@ -765,89 +849,334 @@ export async function publishUpdate(
       await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:publish");
       const head = await loadUpdate(tx, ctx, id);
       if (head.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
+      if (head.scheduledFor) fail("UPDATE_SCHEDULED");
       if (head.updatedAt.getTime() !== prep.seenUpdatedAt.getTime()) fail("UPDATE_CHANGED");
-      const { project, window, prefs } = prep;
-      const now = new Date();
-      const portal = await computePortalSnapshot(
-        tx,
-        ctx.tenantId,
-        project,
-        window,
-        prep.body.metrics.include,
-        prefs.timezone,
-        now,
-      );
-      const budgetRow = prep.seesBudget
-        ? await tx.projectBudget.findFirst({
-            where: { tenantId: ctx.tenantId, projectId: project.id, status: "ACTIVE" },
-            select: {
-              id: true,
-              projectId: true,
-              kind: true,
-              billingModel: true,
-              amount: true,
-              currency: true,
-              period: true,
-              periodAnchor: true,
-              includeNonBillable: true,
-              thresholds: true,
-              notifyMemberIds: true,
-              status: true,
-            },
-          })
-        : null;
-      const internal = await computeInternalSnapshot(
-        tx,
-        ctx.tenantId,
-        {
-          entries: prep.entries,
-          costOf,
-          budget: budgetRow,
-          withAmounts: prep.seesBill,
-          currency: project.billingCurrency,
+      return freezePublish(tx, ctx.tenantId, head.id, prep, costOf, {
+        visibility: input.visibility,
+        publisherMemberId: ctx.actor.memberId,
+        scheduledFor: null,
+      });
+    }),
+  );
+}
+
+/** What one publish may freeze — decided before the freeze, by the member's Publish and by the job's. */
+export type PublishPrep = {
+  readonly project: ProjectRow;
+  readonly window: ReturnType<typeof metricsWindowFor>;
+  readonly prefs: Awaited<ReturnType<typeof readPreferences>>;
+  readonly seesBudget: boolean;
+  readonly seesBill: boolean;
+  readonly seesCost: boolean;
+  readonly entries: EntryRow[] | null;
+  readonly cardIds: string[];
+  readonly body: UpdateBody;
+  readonly seenUpdatedAt: Date;
+};
+
+/**
+ * The first half of a publish, shared (slice 135): the window, and what the
+ * PUBLISHER's figure codes (`held`, on all four gates) let it freeze. The
+ * caller has already authorised, scoped and refused a non-draft, an
+ * archived project and a scheduled post where it must.
+ */
+export async function preparePublish(
+  tx: TenantDb,
+  tenantId: string,
+  head: { readonly id: string; readonly updatedAt: Date },
+  project: ProjectRow,
+  held: ReadonlySet<string>,
+): Promise<PublishPrep> {
+  const draft = await tx.projectUpdate.findFirstOrThrow({
+    where: { tenantId, id: head.id },
+    select: { periodStart: true, periodEnd: true, body: true, bodyText: true },
+  });
+  if (draft.bodyText === null) fail("UPDATE_EMPTY");
+  // What this transaction READ is what the freeze must FREEZE: the row's
+  // `updatedAt` is carried across and compared there, so a draft saved by
+  // somebody else in between is refused rather than published with a
+  // window, toggles or a body this transaction never saw (code review,
+  // slice 67).
+  const seenUpdatedAt = head.updatedAt;
+  const prefs = await readPreferences(tx, tenantId);
+  const previous = await previousPublished(tx, tenantId, project.id, head.id);
+  const window = metricsWindowFor(
+    {
+      periodStart: draft.periodStart ? isoDateOf(draft.periodStart) : null,
+      periodEnd: draft.periodEnd ? isoDateOf(draft.periodEnd) : null,
+      previous,
+      projectCreatedAt: project.createdAt,
+    },
+    prefs.timezone,
+  );
+  const seesTeam = held.has("time:view_team");
+  const seesBudget = held.has("budget:view");
+  const seesBill = held.has("rate:view_bill");
+  const seesCost = seesTeam && prefs.finance.costRatesEnabled && held.has("rate:view_cost");
+  const entries: EntryRow[] | null = seesTeam
+    ? await loadProjectEntries(tx, tenantId, project.id, {
+        from: localDateString(window.from, prefs.timezone),
+        to: localDateString(new Date(window.to.getTime() - 1), prefs.timezone),
+      })
+    : null;
+  const cardIds = entries
+    ? [...new Set(entries.map((r) => r.costRateCardId).filter((c): c is string => c !== null))]
+    : [];
+  return {
+    project,
+    window,
+    prefs,
+    seesBudget,
+    seesBill,
+    seesCost,
+    entries,
+    cardIds,
+    body: readUpdateBody(draft.body),
+    seenUpdatedAt,
+  };
+}
+
+/**
+ * The second half, shared (slice 135): the numbers frozen at THIS instant,
+ * the number taken, the post written by compare-and-set, its twin, its
+ * audit row. `scheduledFor` is the schedule the caller read — null for the
+ * member's Publish, which so publishes only an UNSCHEDULED draft; the job's
+ * own, so a post unscheduled or moved in between is a zero-row write.
+ * Publishing clears the schedule in the same statement (the CHECK's rule).
+ */
+export async function freezePublish(
+  tx: TenantDb,
+  tenantId: string,
+  updateId: string,
+  prep: PublishPrep,
+  costOf: Record<string, string> | null,
+  how: {
+    readonly visibility: UpdateVisibility;
+    readonly publisherMemberId: string;
+    readonly scheduledFor: Date | null;
+  },
+): Promise<UpdatePublished> {
+  const { project, window, prefs } = prep;
+  const now = new Date();
+  const portal = await computePortalSnapshot(tx, tenantId, project, window, prep.body.metrics.include, prefs.timezone, now);
+  const budgetRow = prep.seesBudget
+    ? await tx.projectBudget.findFirst({
+        where: { tenantId, projectId: project.id, status: "ACTIVE" },
+        select: {
+          id: true,
+          projectId: true,
+          kind: true,
+          billingModel: true,
+          amount: true,
+          currency: true,
+          period: true,
+          periodAnchor: true,
+          includeNonBillable: true,
+          thresholds: true,
+          notifyMemberIds: true,
+          status: true,
         },
-        localDateString(now, prefs.timezone),
-      );
-      const changes = await readChanges(tx, ctx.tenantId, project, window);
-      const seq = await nextCounter(tx, `project_update:${project.id}`);
-      // THE WRITE IS THE COMPARE-AND-SET. The check above ran a dozen
-      // round trips ago (the snapshots, the budget, the counter), so a
-      // save that landed in between would still be published unseen if
-      // this were `update` by id. Binding the write to the row's
-      // `updatedAt` as this publish READ it makes a superseded draft a
-      // zero-row update, refused as UPDATE_CHANGED — the number is spent
-      // (the counter never runs backwards), the row is untouched.
+      })
+    : null;
+  const internal = await computeInternalSnapshot(
+    tx,
+    tenantId,
+    {
+      entries: prep.entries,
+      costOf,
+      budget: budgetRow,
+      withAmounts: prep.seesBill,
+      currency: project.billingCurrency,
+    },
+    localDateString(now, prefs.timezone),
+  );
+  const changes = await readChanges(tx, tenantId, project, window);
+  const seq = await nextCounter(tx, `project_update:${project.id}`);
+  // THE WRITE IS THE COMPARE-AND-SET. The check above ran a dozen
+  // round trips ago (the snapshots, the budget, the counter), so a
+  // save that landed in between would still be published unseen if
+  // this were `update` by id. Binding the write to the row's
+  // `updatedAt` as this publish READ it — and to the schedule it read —
+  // makes a superseded draft a zero-row update, refused as UPDATE_CHANGED
+  // — the number is spent (the counter never runs backwards), the row is
+  // untouched.
+  const written = await tx.projectUpdate.updateMany({
+    where: { tenantId, id: updateId, status: "DRAFT", updatedAt: prep.seenUpdatedAt, scheduledFor: how.scheduledFor },
+    data: {
+      seq,
+      status: "PUBLISHED",
+      visibility: how.visibility,
+      publishedAt: now,
+      publishedByMemberId: how.publisherMemberId,
+      portalSnapshot: portal as object,
+      changesSinceLast: changeIdsOf(changes) as object,
+      scheduledFor: null,
+      scheduledByMemberId: null,
+      scheduledVisibility: null,
+    },
+  });
+  if (written.count !== 1) fail("UPDATE_CHANGED");
+  // The class-A twin, by tagged SQL: three of its columns are NULL
+  // when the publisher could not see the figure, and a SQL NULL on a
+  // jsonb column is not the same value as JSON `null` (Prisma spells
+  // the two differently; the read side must never have to ask which).
+  const json = (v: unknown): string | null => (v === null ? null : JSON.stringify(v));
+  await tx.$executeRaw`
+    INSERT INTO project_update_internal_snapshot
+      (update_id, tenant_id, by_member, cost, budget, computed_at)
+    VALUES (${updateId}, ${tenantId},
+            ${json(internal.byMember)}::jsonb, ${json(internal.cost)}::jsonb, ${json(internal.budget)}::jsonb,
+            ${now})`;
+  await record(tx, {
+    action: "project_update.published",
+    targetType: "ProjectUpdate",
+    targetId: updateId,
+    metadata: {
+      projectId: project.id,
+      seq,
+      visibility: how.visibility,
+      portalEnabled: project.portalEnabled,
+      // The job's publish is written as SYSTEM; the row names who
+      // scheduled it (an id, as the post's `published_by_member_id` does).
+      ...(how.scheduledFor ? { scheduled: true, scheduledBy: how.publisherMemberId } : {}),
+    },
+  });
+  return { id: updateId, seq, visibility: how.visibility, portalEnabled: project.portalEnabled };
+}
+
+/**
+ * project_update:publish — schedule a draft to publish at a whole HOUR
+ * (slice 135, founder decision C112): the job publishes it with the hourly
+ * run after that hour, as THIS member, to the audience chosen now, with the
+ * numbers counted then (C112 (b)). The publish code, not create: scheduling
+ * decides what a client reads and when, which is the delivery lead's.
+ *
+ * `date` and `hour` are the member's wall clock in `timeZone` — the action
+ * passes the zone the page drew the picker in (`resolveTimeZone`), never one
+ * the form sent. The hour must lie after now and at most
+ * `UPDATE_SCHEDULE_MAX_DAYS` ahead. Scheduling a scheduled draft MOVES it.
+ * From here until it goes out — or is unscheduled — the draft is LOCKED
+ * (C112 (a)).
+ */
+export async function scheduleUpdate(
+  ctx: WorkCtx,
+  id: string,
+  input: {
+    readonly visibility: UpdateVisibility;
+    readonly date: string;
+    readonly hour: number;
+    readonly timeZone: string;
+    /** The version the composer's own save returned — as `publishUpdate`'s. */
+    readonly expectedUpdatedAt?: Date;
+  },
+): Promise<{ readonly scheduledFor: Date }> {
+  if (
+    !ISO_DATE.test(input.date) ||
+    Number.isNaN(Date.parse(`${input.date}T00:00:00Z`)) ||
+    !Number.isInteger(input.hour) ||
+    input.hour < 0 ||
+    input.hour > 23 ||
+    !isTimezone(input.timeZone)
+  ) {
+    fail("INVALID_INPUT", "schedule");
+  }
+  const at = localHourInstant(input.date, input.hour, input.timeZone);
+  // After now; and at most 90 DAYS ahead on the member's own calendar — the
+  // bound the picker draws (`max`), so its last day is good at every hour
+  // (the code review's L3).
+  if (at.getTime() <= Date.now() || input.date > addDays(todayIn(input.timeZone), UPDATE_SCHEDULE_MAX_DAYS)) {
+    fail("UPDATE_SCHEDULE_TIME");
+  }
+  return withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:publish");
+      const head = await loadUpdate(tx, ctx, id);
+      if (head.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
+      if (input.expectedUpdatedAt && head.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) fail("UPDATE_CHANGED");
+      const project = await loadProject(tx, ctx, head.projectId);
+      if (project.archivedAt) fail("ARCHIVED");
+      const draft = await tx.projectUpdate.findFirstOrThrow({
+        where: { tenantId: ctx.tenantId, id: head.id },
+        select: { bodyText: true, title: true, body: true },
+      });
+      if (draft.bodyText === null) fail("UPDATE_EMPTY");
+      // For the CLIENT, a post naming private work is refused NOW: the job
+      // refuses it at go-out (`private_named`) where nobody is there to heed
+      // the dialog's warning, so scheduling it would only promise a post that
+      // will not be sent (the re-check's M2). Publish now stays advisory —
+      // the member is there to decide.
+      if (input.visibility === "CLIENT_VISIBLE") {
+        const named = await privateNamesIn(tx, ctx.tenantId, project.id, linesOfPost(draft.title, readUpdateBody(draft.body)));
+        if (named.length > 0) fail("UPDATE_NAMES_PRIVATE");
+      }
+      // Bound to the row as read: an edit saved in between is refused, not
+      // scheduled unseen (the composer saves, then schedules).
       const written = await tx.projectUpdate.updateMany({
-        where: { tenantId: ctx.tenantId, id: head.id, status: "DRAFT", updatedAt: prep.seenUpdatedAt },
-        data: {
-          seq,
-          status: "PUBLISHED",
-          visibility: input.visibility,
-          publishedAt: now,
-          publishedByMemberId: ctx.actor.memberId,
-          portalSnapshot: portal as object,
-          changesSinceLast: changeIdsOf(changes) as object,
-        },
+        where: { tenantId: ctx.tenantId, id: head.id, status: "DRAFT", updatedAt: head.updatedAt },
+        data: { scheduledFor: at, scheduledByMemberId: ctx.actor.memberId, scheduledVisibility: input.visibility },
       });
       if (written.count !== 1) fail("UPDATE_CHANGED");
-      // The class-A twin, by tagged SQL: three of its columns are NULL
-      // when the publisher could not see the figure, and a SQL NULL on a
-      // jsonb column is not the same value as JSON `null` (Prisma spells
-      // the two differently; the read side must never have to ask which).
-      const json = (v: unknown): string | null => (v === null ? null : JSON.stringify(v));
-      await tx.$executeRaw`
-        INSERT INTO project_update_internal_snapshot
-          (update_id, tenant_id, by_member, cost, budget, computed_at)
-        VALUES (${head.id}, ${ctx.tenantId},
-                ${json(internal.byMember)}::jsonb, ${json(internal.cost)}::jsonb, ${json(internal.budget)}::jsonb,
-                ${now})`;
       await record(tx, {
-        action: "project_update.published",
+        action: "project_update.scheduled",
         targetType: "ProjectUpdate",
         targetId: head.id,
-        metadata: { projectId: project.id, seq, visibility: input.visibility, portalEnabled: project.portalEnabled },
+        metadata: {
+          projectId: project.id,
+          scheduledFor: at.toISOString(),
+          visibility: input.visibility,
+          ...(head.scheduledFor ? { movedFrom: head.scheduledFor.toISOString() } : {}),
+        },
       });
-      return { id: head.id, seq, visibility: input.visibility, portalEnabled: project.portalEnabled };
+      return { scheduledFor: at };
+    }),
+  );
+}
+
+/**
+ * project_update:publish — take a draft off its schedule (C112 (a)): it is a
+ * plain draft again, editable. Already unscheduled is a quiet no-op; a post
+ * the job published a moment ago is UPDATE_NOT_DRAFT.
+ */
+export async function unscheduleUpdate(ctx: WorkCtx, id: string): Promise<void> {
+  await withTenant(ctx.tenantId, principalOf(ctx), async (tx) =>
+    guarded(async () => {
+      await requireAccess(tx, ctx.tenantId, ctx.actor, "project_update:publish");
+      const head = await loadUpdate(tx, ctx, id);
+      if (head.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
+      if (!head.scheduledFor) return;
+      const before = await tx.projectUpdate.findFirstOrThrow({
+        where: { tenantId: ctx.tenantId, id: head.id },
+        select: { scheduledByMemberId: true },
+      });
+      const cleared = await tx.projectUpdate.updateMany({
+        where: { tenantId: ctx.tenantId, id: head.id, status: "DRAFT", scheduledFor: head.scheduledFor },
+        data: { scheduledFor: null, scheduledByMemberId: null, scheduledVisibility: null },
+      });
+      if (cleared.count !== 1) {
+        // Nothing cleared: the job published it a moment ago (the write
+        // waited on its lock and found a published row), or someone moved
+        // or cleared it. Never "Unscheduled" over a post that has gone out
+        // (both reviews' finding) — the member must know, while Retract is
+        // still open.
+        const now = await tx.projectUpdate.findFirst({
+          where: { tenantId: ctx.tenantId, id: head.id },
+          select: { status: true, scheduledFor: true },
+        });
+        if (!now) return deny("NOT_FOUND");
+        if (now.status !== "DRAFT") fail("UPDATE_NOT_DRAFT");
+        if (now.scheduledFor) fail("UPDATE_CHANGED");
+        return;
+      }
+      await record(tx, {
+        action: "project_update.unscheduled",
+        targetType: "ProjectUpdate",
+        targetId: head.id,
+        metadata: {
+          projectId: head.projectId,
+          scheduledFor: head.scheduledFor.toISOString(),
+          ...(before.scheduledByMemberId ? { scheduledBy: before.scheduledByMemberId } : {}),
+        },
+      });
     }),
   );
 }

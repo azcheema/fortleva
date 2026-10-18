@@ -36,6 +36,7 @@ type KindCopyKey =
   | "loginAskDeclined"
   | "loginsAlarm"
   | "updateDue"
+  | "updateScheduleFailed"
   | "contractSigned"
   | "contractDeclined"
   | "contractEnding"
@@ -62,6 +63,7 @@ export const KIND_MESSAGE_KEY: Record<NotificationKind, KindCopyKey> = {
   "credential.ask_declined": "loginAskDeclined",
   "contact.logins_alarm": "loginsAlarm",
   "project_update.due": "updateDue",
+  "project_update.schedule_failed": "updateScheduleFailed",
   "contract.signed": "contractSigned",
   "contract.declined": "contractDeclined",
   "invoice.renewal_drafted": "renewalDrafted",

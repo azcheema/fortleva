@@ -14,6 +14,7 @@ import {
   KeyRoundIcon,
   KeySquareIcon,
   MegaphoneIcon,
+  MegaphoneOffIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
   ReceiptTextIcon,
@@ -51,6 +52,8 @@ export const KIND_ICON: Record<NotificationKind, React.ComponentType<LucideProps
   "contact.logins_alarm": ShieldAlertIcon,
   // The Updates tab's own glyph (its empty state), so the reminder and the tab match.
   "project_update.due": MegaphoneIcon,
+  // The same megaphone, silenced: a scheduled update that did not go out (slice 135).
+  "project_update.schedule_failed": MegaphoneOffIcon,
   // The Contracts nav's own glyph for a signature; a crossed file for a refusal.
   "contract.signed": FileSignatureIcon,
   "contract.declined": FileXIcon,

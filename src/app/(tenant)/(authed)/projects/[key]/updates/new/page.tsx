@@ -6,6 +6,8 @@ import { getTranslations } from "next-intl/server";
 import { AuthzError } from "@/authz/errors";
 import { handleAuthzRedirect } from "@/authz/redirects";
 import { Button } from "@/components/ui/button";
+import { resolveTimeZone } from "@/i18n/resolve";
+import { todayIn } from "@/lib/due-date";
 import { requireTenantContext } from "@/members/tenant-context";
 import { readComposerContext } from "@/modules/work";
 import { newUpdateBody } from "@/modules/work/update-body";
@@ -43,6 +45,7 @@ export default async function NewUpdatePage({ params }: { params: Promise<{ key:
     if (e instanceof AuthzError) notFound();
     throw e;
   }
+  const timeZone = await resolveTimeZone();
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,6 +67,7 @@ export default async function NewUpdatePage({ params }: { params: Promise<{ key:
           body: newUpdateBody(context.changes, context.project.shows, context.layout.metrics),
         }}
         context={context}
+        schedule={{ timeZone, today: todayIn(timeZone) }}
       />
     </div>
   );

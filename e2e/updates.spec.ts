@@ -133,6 +133,58 @@ test.describe("progress updates", () => {
     await expect(toast(page, "Draft discarded.")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(new RegExp(`/projects/${seed.projectKey}/updates$`), { timeout: 30_000 });
   });
+
+  /**
+   * SCHEDULING (slice 135, founder decision C112): Later, a day and an hour —
+   * the post is then LOCKED (its page is the post, a banner and Unschedule,
+   * never the composer), the list says Scheduled, and the client cannot read
+   * it. The hourly job's publish is `scheduled-updates.dbtest.ts`'s (a clock a
+   * browser cannot move). Unscheduled and discarded at the end, so the list is
+   * as the seed left it.
+   */
+  test("a scheduled update is locked, listed as Scheduled, unseen by the client, and Unschedule frees it", async ({
+    page,
+    browser,
+  }) => {
+    const summary = `Goes out tomorrow ${Date.now()}`;
+    await page.goto(`/projects/${seed.projectKey}/updates/new`);
+    await expect(page.getByTestId("update-composer")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("update-section-SUMMARY").click();
+    await page.keyboard.type(summary);
+
+    await page.getByTestId("open-publish").click();
+    await expect(page.getByRole("dialog", { name: "Publish update" })).toBeVisible();
+    await page.getByTestId("publish-when-later").click();
+    await expect(page.getByTestId("publish-when-later")).toHaveAttribute("aria-checked", "true");
+    // Tomorrow is the first answer, so any hour of it lies ahead.
+    await expect(page.getByTestId("publish-date")).not.toHaveValue("");
+    await page.getByTestId("publish-hour").selectOption("10");
+    await expect(page.getByTestId("publish-confirm")).toHaveText("Schedule");
+    await page.getByTestId("publish-confirm").click();
+    await expect(toast(page, /Scheduled for .*10:00/)).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(/\/updates\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+
+    // Locked: the post as it will read, when, and Unschedule — no composer.
+    await expect(page.getByTestId("update-scheduled-banner")).toContainText("Your client will read it on the portal", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("update-detail")).toContainText(summary);
+    await expect(page.getByTestId("update-composer")).toHaveCount(0);
+    const updatePage = page.url();
+
+    await page.goto(`/projects/${seed.projectKey}/updates`);
+    const row = page.getByTestId("updates-list").locator("li", { hasText: summary });
+    await expect(row.getByTestId("update-scheduled-chip")).toHaveText("Scheduled", { timeout: 30_000 });
+    await portalShows(browser, summary, false);
+
+    await page.goto(updatePage);
+    await page.getByTestId("update-unschedule").click();
+    await expect(toast(page, "Unscheduled. It is a draft again.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("update-composer")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Discard draft" }).click();
+    await page.getByTestId("update-composer").getByRole("button", { name: "Yes" }).click();
+    await expect(toast(page, "Draft discarded.")).toBeVisible({ timeout: 30_000 });
+  });
 });
 
 /**

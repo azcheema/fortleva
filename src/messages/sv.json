@@ -331,6 +331,7 @@
       "loginAskDeclined": "En kund kan inte skicka en inloggning ni bad om",
       "loginsAlarm": "Upprepade misslyckade försök att öppna en kunds inloggningar",
       "updateDue": "Dags för en projektuppdatering",
+      "updateScheduleFailed": "En schemalagd uppdatering kunde inte publiceras",
       "contractSigned": "En kund har skrivit under ett kontrakt",
       "contractDeclined": "En kund har tackat nej till ett kontrakt",
       "contractEnding": "Ett kontrakt löper ut",
@@ -2025,7 +2026,10 @@
     "UPDATE_NOT_PUBLISHED": "Den uppdateringen är inte publicerad.",
     "UPDATE_RETRACT_WINDOW_CLOSED": "Det har gått mer än 15 minuter sedan publiceringen, så uppdateringen kan inte längre dras tillbaka. Lägg till en anteckning eller arkivera den.",
     "UPDATE_EMPTY": "Skriv något i minst ett avsnitt innan du publicerar.",
-    "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
+    "UPDATE_CHANGED": "Uppdateringen ändrades alldeles nyss. Kontrollera den och försök igen.",
+    "UPDATE_SCHEDULED": "Den här uppdateringen är schemalagd. Ta bort schemaläggningen för att ändra den.",
+    "UPDATE_SCHEDULE_TIME": "Välj en tid senare än nu, högst 90 dagar framåt.",
+    "UPDATE_NAMES_PRIVATE": "Uppdateringen nämner arbete som bara ditt team kan se. Ta bort de raderna, eller schemalägg den bara för teamet.",
     "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas.",
     "TABLE_TOO_LARGE": "En tabell kan ha högst 20 kolumner och 500 rader. Gör den mindre eller dela upp den i två.",
     "DOWNLOAD_RATE_LIMITED": "Du har laddat ner många filer på kort tid. Vänta några minuter och försök igen.",
@@ -3818,7 +3822,18 @@
       "status": {
         "DRAFT": "Utkast",
         "PUBLISHED": "Publicerad",
-        "ARCHIVED": "Arkiverad"
+        "ARCHIVED": "Arkiverad",
+        "SCHEDULED": "Schemalagd"
+      },
+      "scheduled": {
+        "bannerTitle": "Schemalagd till {when}",
+        "bannerClient": "Kunden läser den i portalen. Schemalagd av {name}; tiden gäller {zone}. Siffrorna räknas när den publiceras, och den kan inte ändras förrän schemaläggningen tas bort.",
+        "bannerPortalOff": "Den är till kunden, men portalen är avstängd för projektet — kunden ser den när den slås på (fliken Portal). Schemalagd av {name}; tiden gäller {zone}. Siffrorna räknas när den publiceras, och den kan inte ändras förrän schemaläggningen tas bort.",
+        "bannerTeam": "Den publiceras bara för teamet. Schemalagd av {name}; tiden gäller {zone}. Siffrorna räknas när den publiceras, och den kan inte ändras förrän schemaläggningen tas bort.",
+        "someone": "någon",
+        "unschedule": "Ta bort schemaläggning",
+        "unscheduled": "Schemaläggningen är borttagen. Den är ett utkast igen.",
+        "failed": "Det gick inte. Försök igen."
       },
       "untitled": "Utan rubrik",
       "seq": "#{seq}",
@@ -3890,7 +3905,17 @@
         "back": "Gå tillbaka",
         "publishedVisible": "Uppdatering #{seq} publicerad. Kunden kan läsa den.",
         "publishedInternal": "Uppdatering #{seq} publicerad, privat för teamet.",
-        "publishedPortalOff": "Uppdatering #{seq} publicerad. Kunden ser den när portalen slås på för projektet."
+        "publishedPortalOff": "Uppdatering #{seq} publicerad. Kunden ser den när portalen slås på för projektet.",
+        "when": "När",
+        "whenNow": "Nu",
+        "whenLater": "Senare",
+        "day": "Dag",
+        "hour": "Tid",
+        "zoneHint": "Tid i {zone}.",
+        "laterHint": "Den publiceras några minuter efter den timmen, med siffrorna som de ser ut då. Fram till dess är den låst — ta bort schemaläggningen för att ändra den.",
+        "scheduleConfirm": "Schemalägg",
+        "privateNamedLater": "En schemalagd uppdatering kan inte nämna arbete som bara ditt team ser — ingen är där som kan ta bort det. Ta bort de raderna först, eller schemalägg den för teamet.",
+        "scheduledToast": "Schemalagd till {day} kl. {hour}."
       },
       "detail": {
         "back": "Alla uppdateringar",

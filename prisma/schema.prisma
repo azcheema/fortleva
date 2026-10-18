@@ -1239,7 +1239,8 @@ enum ProjectUpdateStatus {
 /// is unreachable by a contact whatever its visibility says.
 /// scope=client  rls=B (projectScoped; + status = PUBLISHED)  ret=R2  enc=none
 /// audit: project_update.published | archived | visibility_changed |
-///        retracted | annotated | draft_discarded
+///        retracted | annotated | draft_discarded | scheduled |
+///        unscheduled | schedule_failed
 model ProjectUpdate {
   id                  String              @id @default(uuid(7))
   tenantId            String              @map("tenant_id")
@@ -1262,6 +1263,14 @@ model ProjectUpdate {
   publishedByMemberId String?             @map("published_by_member_id") // attribution, no FK
   editNote            String?             @map("edit_note") @db.VarChar(500) // a note added AFTER publish — the one text that may change
   pdfDocumentId       String?             @map("pdf_document_id") // → Document(kind REPORT); reserved, nothing writes it yet
+  // Slice 135 (C112): a DRAFT scheduled to publish at an hour — all three or
+  // none, on a draft only (CHECKs), cleared by publishing; the content is
+  // LOCKED while set (trigger `project_update_schedule_lock`). The job's
+  // partial index on `scheduled_for` (WHERE NOT NULL) is the migration's
+  // alone: Prisma has no syntax for the predicate (20261103090000).
+  scheduledFor        DateTime?           @map("scheduled_for") @db.Timestamptz(6)
+  scheduledByMemberId String?             @map("scheduled_by_member_id") // attribution, no FK — becomes publishedByMemberId
+  scheduledVisibility Visibility?         @map("scheduled_visibility") // the dialog's audience; `visibility` stays INTERNAL on a draft
   createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 

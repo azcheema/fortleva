@@ -295,6 +295,9 @@ export type DomainErrorCode =
   | "TEMPLATE_INVALID" // a stored document that does not parse (or a project whose stages could not seed one)
   | "UPDATE_RETRACT_WINDOW_CLOSED" // more than 15 minutes since publishing
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
+  | "UPDATE_SCHEDULED" // a scheduled update is locked (C112 (a)) — edit, discard, publish now; trigger token too
+  | "UPDATE_SCHEDULE_TIME" // a schedule's hour is not after now, or more than 90 days ahead
+  | "UPDATE_NAMES_PRIVATE" // a post scheduled for the client names private work as a whole line (it would be refused at go-out)
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing
   | "UPDATE_TOO_LARGE" // a section's JSON or its extracted text is past its cap
   // Slice 132 (C109): a table in a description or an update section past

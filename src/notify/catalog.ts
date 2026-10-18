@@ -317,6 +317,27 @@ const KINDS = {
     email: { atLevel: "PARTICIPATING" },
   },
   /**
+   * Slice 135 (founder decision C112 (d)): a progress update SCHEDULED to
+   * publish could not go out — its scheduler may no longer publish there,
+   * the project was archived, it was empty, a post for the client named work
+   * made private since, or the hourly run reached it a day late
+   * (`src/modules/work/scheduled-updates.ts`). To the member who
+   * scheduled it, while active, and nobody else (reason REQUESTER, "You
+   * asked"). The draft stays, unscheduled.
+   *
+   * INSTANT and INBOX ONLY — no `email`: C112 (d) chose an inbox note, and a
+   * scheduled post that did not go out is something to see the next time
+   * you look, not a mail. Entity: the PROJECT, named and linked to its
+   * Updates tab exactly as `project_update.due`'s rows are (inbox.ts). The
+   * key carries the schedule's hour: a post refused, scheduled for ANOTHER
+   * hour and refused again is told twice; for the same hour, while the first
+   * row is unread, once.
+   */
+  "project_update.schedule_failed": {
+    audience: "MEMBER",
+    class: "INSTANT",
+  },
+  /**
    * Phase 4 slice 112b2 (founder decision C85 (a)): the client's signer SIGNED
    * a contract, or DECLINED it, in the portal (`src/modules/contracts/
    * portal-sign.ts`, announced after the census write by `sign-announce.ts`).

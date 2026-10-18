@@ -292,6 +292,10 @@ export const SUMMARY_LINES: Readonly<Record<NotificationKind, Line | null>> = {
     ["1 reminder to write a project update", "# reminders to write project updates"],
     ["1 påminnelse om att skriva en projektuppdatering", "# påminnelser om att skriva projektuppdateringar"],
   ),
+  "project_update.schedule_failed": line(
+    ["1 scheduled update couldn't go out", "# scheduled updates couldn't go out"],
+    ["1 schemalagd uppdatering kunde inte publiceras", "# schemalagda uppdateringar kunde inte publiceras"],
+  ),
   "contract.signed": line(
     ["1 client signed a contract", "Clients signed # contracts"],
     ["1 kund har skrivit under ett kontrakt", "Kunder har skrivit under # kontrakt"],

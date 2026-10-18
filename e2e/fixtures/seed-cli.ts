@@ -353,6 +353,9 @@ const DBTEST_PREFIXES = [
   // Phase 5 slice 102, the progress-update reminders —
   // `src/modules/work/update-reminders.dbtest.ts`, `setupTenant("updrem")`.
   "updrem-",
+  // Slice 135, scheduled progress updates —
+  // `src/modules/work/scheduled-updates.dbtest.ts`, `setupTenant("updsched")`.
+  "updsched-",
   // Phase 3V slice 99, the door's alarm — `src/modules/vault/door-alarm.dbtest.ts`,
   // `setupTenant("valarm")`.
   "valarm-",
