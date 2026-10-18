@@ -38,7 +38,7 @@ import {
   saveUpdateDraftAction,
 } from "./actions";
 import { PublishDialog } from "./publish-dialog";
-import { SectionEditor } from "./section-editor";
+import { isBlank, SectionEditor } from "./section-editor";
 
 /**
  * THE COMPOSER (PLAN Phase 3: "health picker, sections with default
@@ -289,7 +289,7 @@ export function UpdateComposer({
     const lines = all.filter((l) => !present.has(l.trim()));
     if (lines.length === 0) return;
     const list = bulletListOf(lines);
-    if (editor.isEmpty) editor.commands.setContent({ type: "doc", content: [list] }, { emitUpdate: true });
+    if (isBlank(editor)) editor.commands.setContent({ type: "doc", content: [list] }, { emitUpdate: true });
     else editor.chain().focus("end").insertContent(list).run();
   };
 

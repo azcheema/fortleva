@@ -4,6 +4,7 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { fail, type DomainErrorCode } from "@/lib/domain-error";
 import { commentExtensions, contractExtensions, descriptionExtensions } from "./extensions";
 import { MEMBER_ID, MENTION_NODE } from "./mention-node";
+import { boundedSpan, layoutTable, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS } from "./table-bounds";
 
 /**
  * The rich-text gatekeeper: the browser sends JSON, and NOTHING it
@@ -129,6 +130,12 @@ const NODE_ATTRS: Record<string, (attrs: Record<string, unknown>) => Record<stri
   }),
   // A STRING "false" is truthy in JavaScript and would have counted as done.
   taskItem: (a) => ({ checked: a["checked"] === true }),
+  // Slice 132 (C109): a cell keeps its span — a merged cell arrives only by
+  // paste — bounded, and NEVER `colwidth` (no widths: a stored width is a
+  // layout decision a client's screen would inherit). `table` and
+  // `tableRow` have no attributes of their own to keep.
+  tableCell: (a) => ({ colspan: boundedSpan(a["colspan"], TABLE_MAX_COLUMNS), rowspan: boundedSpan(a["rowspan"], TABLE_MAX_ROWS) }),
+  tableHeader: (a) => ({ colspan: boundedSpan(a["colspan"], TABLE_MAX_COLUMNS), rowspan: boundedSpan(a["rowspan"], TABLE_MAX_ROWS) }),
   // The member id and NOTHING else — a `label` (Tiptap's own mention
   // stores one) is a name, and a name in a body is how one reaches a
   // client (extensions.ts). A malformed id is dropped here and the derive
@@ -263,7 +270,36 @@ function normalizeRichText(input: unknown, kind: RichTextKind): Normalized {
   let checklistDone = 0;
   const mentions = new Set<string>();
   let badMention = false;
+  let tables = 0;
+  let tableTooBig = false;
+  // Cast, not annotated: set inside the walk's callback, which narrowing cannot see.
+  let badTable = null as string | null;
   node!.descendants((child) => {
+    if (badTable !== null) return false;
+    if (child.type.name === "table") {
+      tables += 1;
+      // A table in a table is no "simple table" (C109 (b)) and no surface
+      // draws one; the schema's cells hold any block, so it is refused here.
+      // (The paste handler flattens one first: this is the belt.)
+      child.descendants((inner) => {
+        if (inner.type.name === "table") badTable = "holds a table inside a table";
+        return badTable === null;
+      });
+      // The GRID's size, spans carried down included (`layoutTable`).
+      const rows: { colspan: number; rowspan: number }[][] = [];
+      child.forEach((row) => {
+        const cells: { colspan: number; rowspan: number }[] = [];
+        row.forEach((cell) => {
+          cells.push({ colspan: cell.attrs["colspan"] as number, rowspan: cell.attrs["rowspan"] as number });
+        });
+        rows.push(cells);
+      });
+      const layout = layoutTable(rows);
+      if (!layout.ok) {
+        if (layout.reason === "too_wide" || layout.reason === "too_long") tableTooBig = true;
+        else badTable = "holds a table whose cells overlap";
+      }
+    }
     if (child.type.name === "taskItem") {
       checklistTotal += 1;
       if (child.attrs["checked"] === true) checklistDone += 1;
@@ -278,11 +314,14 @@ function normalizeRichText(input: unknown, kind: RichTextKind): Normalized {
     }
     return true; // nested checklists count too
   });
+  if (badTable !== null) fail("INVALID_INPUT", `${kind} ${badTable}`);
+  if (tableTooBig) fail("TABLE_TOO_LARGE");
   if (badMention) fail("INVALID_INPUT", `${kind} mentions no one`);
   if (mentions.size > MENTION_MAX) fail("TOO_MANY_MENTIONS");
 
-  // A document of mentions alone ("@Anna") says something: the person.
-  const empty = text.length === 0 && checklistTotal === 0 && mentions.size === 0;
+  // A document of mentions alone ("@Anna") says something: the person. So
+  // does a table with nothing typed in it yet — someone made it (slice 132).
+  const empty = text.length === 0 && checklistTotal === 0 && mentions.size === 0 && tables === 0;
   const out = node!.toJSON() as JsonNode;
   // The cap above measured what ARRIVED; this measures what is STORED.
   // Normalisation adds attributes the sender omitted — every taskItem

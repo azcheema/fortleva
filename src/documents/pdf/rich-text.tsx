@@ -7,14 +7,15 @@ import type { ReactNode } from "react";
 import { Link, StyleSheet, Text, View } from "@react-pdf/renderer";
 
 import { listMarker } from "@/lib/list-marker";
+import { boundedSpan, layoutTable, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, type RowLayout } from "@/lib/rich-text/table-bounds";
 
 /**
  * A STORED RICH-TEXT DOCUMENT, DRAWN INTO A PDF (Phase 7 slice 119) — the
  * description schema a progress update's section is normalised to
  * (`normalizeUpdateSection` → `descriptionExtensions`): paragraphs, headings
  * 1–3, bullet and numbered lists (nested), TASK LISTS, blockquotes, code
- * blocks, rules and hard breaks; bold, italic, underline, strike, code and
- * links. The contract's PDF has a walker of its own over the narrower
+ * blocks, rules, hard breaks and — since slice 132 — simple tables; bold,
+ * italic, underline, strike, code and links. The contract's PDF has a walker of its own over the narrower
  * contract schema, and keeps it: its archive drawing is frozen under
  * `CONTRACT_PDF_TEMPLATE_VERSION`, and a shared walker would move it.
  *
@@ -32,6 +33,11 @@ import { listMarker } from "@/lib/list-marker";
 
 const INK = { text: "#1a1a1a", muted: "#5f5f5f", rule: "#d4d4d4", band: "#f4f4f4" } as const;
 
+/** About this many characters fill a full-width line of the report's body text. */
+const LINE_CHARS = 110;
+/** A table row estimated past this many lines (about a third of a page) may break across pages. */
+const TALL_ROW_LINES = 20;
+
 const s = StyleSheet.create({
   p: { marginBottom: 5 },
   h1: { fontSize: 11.5, lineHeight: 1.3, fontWeight: 600, marginTop: 6, marginBottom: 3 },
@@ -46,6 +52,13 @@ const s = StyleSheet.create({
   code: { backgroundColor: INK.band, padding: 6, marginBottom: 5 },
   rule: { borderBottomWidth: 0.5, borderBottomColor: INK.rule, marginVertical: 8 },
   link: { color: INK.text, textDecoration: "underline" },
+  // Slice 132 (C109): a simple table — a grid of equal-share cells (no widths
+  // are stored), the header row on a band; a cell's span widens it, and a
+  // column a cell from above still covers is an empty box.
+  table: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: INK.rule, marginBottom: 6 },
+  tableRow: { flexDirection: "row" },
+  tableCell: { flexBasis: 0, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: INK.rule, paddingVertical: 3, paddingHorizontal: 4 },
+  tableHeader: { backgroundColor: INK.band },
 });
 
 type BlockStyle = (typeof s)[keyof typeof s];
@@ -56,7 +69,14 @@ export type PmNode = {
   readonly text?: unknown;
   readonly content?: unknown;
   readonly marks?: unknown;
-  readonly attrs?: { readonly level?: unknown; readonly start?: unknown; readonly type?: unknown; readonly checked?: unknown };
+  readonly attrs?: {
+    readonly level?: unknown;
+    readonly start?: unknown;
+    readonly type?: unknown;
+    readonly checked?: unknown;
+    readonly colspan?: unknown;
+    readonly rowspan?: unknown;
+  };
 };
 
 const children = (node: PmNode): PmNode[] => (Array.isArray(node.content) ? (node.content as PmNode[]) : []);
@@ -201,6 +221,50 @@ function block(node: PmNode, key: number): ReactNode {
     }
     case "horizontalRule":
       return <View key={key} style={s.rule} />;
+    case "table": {
+      const rows = children(node);
+      const layout = layoutTable(
+        rows.map((row) =>
+          children(row).map((cell) => ({
+            colspan: boundedSpan(cell.attrs?.colspan ?? 1, TABLE_MAX_COLUMNS),
+            rowspan: boundedSpan(cell.attrs?.rowspan ?? 1, TABLE_MAX_ROWS),
+          })),
+        ),
+      );
+      // The normaliser stores only tables that lay out; one that would not
+      // is drawn as its text, never dropped (this file's rule).
+      if (!layout.ok) {
+        return (
+          <Text key={key} style={s.p}>
+            {plainText(node)}
+          </Text>
+        );
+      }
+      return (
+        <View key={key} style={s.table}>
+          {rows.map((row, i) => {
+            const cells = children(row);
+            const placed = layout.rows[i]!.cells;
+            return (
+              <View key={i} style={s.tableRow} wrap={tallRow(cells, placed, layout.width)}>
+                {rowBoxes(placed, layout.width).map((box) => {
+                  if (box.kind === "gap") return <View key={`g${box.column}`} style={[s.tableCell, { flexGrow: box.span }]} />;
+                  const cell = cells[box.index]!;
+                  return (
+                    <View
+                      key={`c${box.index}`}
+                      style={[s.tableCell, cell.type === "tableHeader" ? s.tableHeader : {}, { flexGrow: box.colspan }]}
+                    >
+                      {children(cell).map((child, k) => listChild(child, k))}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      );
+    }
     default:
       return (
         <Text key={key} style={s.p}>
@@ -208,6 +272,66 @@ function block(node: PmNode, key: number): ReactNode {
         </Text>
       );
   }
+}
+
+export type RowBox =
+  | { readonly kind: "cell"; readonly index: number; readonly colspan: number }
+  | { readonly kind: "gap"; readonly column: number; readonly span: number };
+
+/**
+ * A table row's boxes, column by column: a cell where one starts, an empty
+ * box where a cell from a row above still covers (or a short row ends) — so
+ * every cell stays under its own header (the code review's LOW-9).
+ */
+export function rowBoxes(placed: RowLayout["cells"], width: number): RowBox[] {
+  const out: RowBox[] = [];
+  let column = 0;
+  let next = 0;
+  while (column < width) {
+    const at = placed[next];
+    if (at && at.column === column) {
+      out.push({ kind: "cell", index: next, colspan: at.colspan });
+      column += at.colspan;
+      next += 1;
+    } else {
+      const until = at ? at.column : width;
+      if (until <= column) break; // never backwards (placements only increase)
+      out.push({ kind: "gap", column, span: until - column });
+      column = until;
+    }
+  }
+  return out;
+}
+
+/**
+ * About how many lines a node takes in a column of `perLine` characters a
+ * line: a text block's text by the line — each hard break and each code
+ * line a line of its own — every other block the sum of its children.
+ * Counted in LINES, not characters: a 70-item checklist of short words is
+ * short in characters and taller than a page (the re-check's LOW-D).
+ */
+export function estimatedLines(node: PmNode, perLine: number): number {
+  if (node.type === "paragraph" || node.type === "heading" || node.type === "codeBlock") {
+    const text = children(node)
+      .map((c) => (c.type === "hardBreak" ? "\n" : typeof c.text === "string" ? c.text : plainText(c)))
+      .join("");
+    return text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / perLine)), 0);
+  }
+  const kids = children(node);
+  return kids.length === 0 ? 1 : kids.reduce((sum, k) => sum + estimatedLines(k, perLine), 0);
+}
+
+/**
+ * Whether a row may run past a third of a page, and so may break across
+ * pages: a short row is kept on one page, but react-pdf CLIPS an unbreakable
+ * row taller than a page — text the client reads on the portal, missing from
+ * their report (the security review's LOW-4).
+ */
+export function tallRow(cells: readonly PmNode[], placed: RowLayout["cells"], width: number): boolean {
+  return cells.some((cell, k) => {
+    const perLine = Math.max(4, Math.floor((LINE_CHARS * (placed[k]?.colspan ?? 1)) / Math.max(1, width)));
+    return estimatedLines(cell, perLine) > TALL_ROW_LINES;
+  });
 }
 
 /** The blocks of a stored document (`{ type: "doc", content: [...] }`), drawn in order. */

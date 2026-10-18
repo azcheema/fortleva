@@ -810,6 +810,42 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+/* A simple table (slice 132, C109). The static renderer wraps it in
+   `.table-scroll`, the editor's node view in `.tableWrapper`: either way
+   a wide table scrolls inside the body and never widens the panel or a
+   phone's page. Cells keep a floor width, so twelve columns scroll rather
+   than squeeze to a letter each. No widths or colours are stored — the
+   look is all here. */
+.prose-body :where(.table-scroll, .tableWrapper) {
+  overflow-x: auto;
+  margin-block: 0.5rem;
+}
+.prose-body :where(.table-scroll, .tableWrapper):first-child {
+  margin-block-start: 0;
+}
+.prose-body :where(.table-scroll, .tableWrapper):last-child {
+  margin-block-end: 0;
+}
+.prose-body :where(table) {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+.prose-body :where(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  vertical-align: top;
+  text-align: start;
+  min-inline-size: 5rem;
+}
+.prose-body :where(th) {
+  font-weight: 600;
+  background-color: var(--muted);
+}
+/* The editor's cell selection (drag across cells): prosemirror-tables
+   marks each cell, and the text selection inside is hidden. */
+.prose-body :where(td.selectedCell, th.selectedCell) {
+  background-color: var(--accent);
+}
 /* ProseMirror's own placeholder hook: an empty first paragraph shows the
    prompt instead of an empty box nobody knows they can type in. */
 .prose-body :where(p.is-editor-empty:first-child)::before {

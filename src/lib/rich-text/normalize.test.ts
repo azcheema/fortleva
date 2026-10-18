@@ -219,3 +219,88 @@ describe("normalizeDescription", () => {
     expect(typeof globalThis.document).toBe("undefined");
   });
 });
+
+// Slice 132 (C109): simple tables.
+const cell = (type: "tableHeader" | "tableCell", value: string, attrs?: Record<string, unknown>) => ({
+  type,
+  ...(attrs ? { attrs } : {}),
+  content: [para(text(value))],
+});
+const row = (...cells: unknown[]) => ({ type: "tableRow", content: cells });
+const table = (...rows: unknown[]) => ({ type: "table", content: rows });
+
+describe("normalizeDescription — tables", () => {
+  it("keeps a table with a header row, and its cells' text is searchable", () => {
+    const out = normalizeDescription(
+      doc(table(row(cell("tableHeader", "Page"), cell("tableHeader", "Owner")), row(cell("tableCell", "Home"), cell("tableCell", "Anna")))),
+    );
+    const stored = out.doc as { content: { type: string; content: { content: { type: string }[] }[] }[] };
+    expect(stored.content[0]!.type).toBe("table");
+    expect(stored.content[0]!.content[0]!.content.map((c) => c.type)).toEqual(["tableHeader", "tableHeader"]);
+    expect(out.text).toContain("Home");
+    expect(out.text).toContain("Anna");
+  });
+
+  it("drops a stored width and an alignment, and bounds a span", () => {
+    const out = normalizeDescription(
+      doc(
+        table(
+          row(
+            cell("tableCell", "a", { colwidth: [400], align: "right", colspan: 2, rowspan: 1 }),
+            cell("tableCell", "b", { colspan: 9999, rowspan: -3 }),
+          ),
+        ),
+      ),
+    );
+    const cells = (out.doc as { content: { content: { content: { attrs: Record<string, unknown> }[] }[] }[] }).content[0]!.content[0]!
+      .content;
+    expect(cells[0]!.attrs["colwidth"] ?? null).toBeNull();
+    expect(cells[0]!.attrs["align"] ?? null).toBeNull();
+    expect(cells[0]!.attrs["colspan"]).toBe(2);
+    expect(cells[1]!.attrs["colspan"]).toBe(1);
+    expect(cells[1]!.attrs["rowspan"]).toBe(1);
+  });
+
+  it("refuses a table inside a table — no surface draws one", () => {
+    const inner = table(row(cell("tableCell", "inner")));
+    expect(() => normalizeDescription(doc(table(row({ type: "tableCell", content: [inner] }))))).toThrow(DomainError);
+  });
+
+  it("refuses a table past the bounds as too large — a row's width counts a span", () => {
+    const wide = row(...Array.from({ length: 21 }, (_, i) => cell("tableCell", `c${i}`)));
+    expect(() => normalizeDescription(doc(table(wide)))).toThrow(expect.objectContaining({ code: "TABLE_TOO_LARGE" }));
+    const spanned = row(...Array.from({ length: 11 }, (_, i) => cell("tableCell", `c${i}`, { colspan: 2 })));
+    expect(() => normalizeDescription(doc(table(spanned)))).toThrow(expect.objectContaining({ code: "TABLE_TOO_LARGE" }));
+    const long = table(...Array.from({ length: 501 }, () => row(cell("tableCell", "x"))));
+    expect(() => normalizeDescription(doc(long))).toThrow(expect.objectContaining({ code: "TABLE_TOO_LARGE" }));
+    expect(normalizeDescription(doc(table(...Array.from({ length: 500 }, () => row(cell("tableCell", "x"))))))).toMatchObject({
+      doc: { type: "doc" },
+    });
+  });
+
+  it("counts a cell carried down by its rowspan — the grid's width, not a row's own (the security review's MEDIUM-1)", () => {
+    // Every row's own cells are 20 wide; the grid is 20 × 3 = 60.
+    const carried = table(...Array.from({ length: 3 }, () => row(cell("tableCell", "x", { colspan: 20, rowspan: 3 }))));
+    expect(() => normalizeDescription(doc(carried))).toThrow(expect.objectContaining({ code: "TABLE_TOO_LARGE" }));
+  });
+
+  it("refuses a rowspan past the last row and cells that overlap — the editor repairs both, so only a crafted body holds one", () => {
+    const pastEnd = table(row(cell("tableCell", "x", { rowspan: 3 })), row(cell("tableCell", "y")));
+    expect(() => normalizeDescription(doc(pastEnd))).toThrow(expect.objectContaining({ code: "INVALID_INPUT" }));
+    const overlap = table(
+      row(cell("tableCell", "a", { rowspan: 2 }), cell("tableCell", "b"), cell("tableCell", "c", { rowspan: 2 })),
+      row(cell("tableCell", "d", { colspan: 2 })),
+    );
+    expect(() => normalizeDescription(doc(overlap))).toThrow(expect.objectContaining({ code: "INVALID_INPUT" }));
+  });
+
+  it("keeps a table with nothing typed in it yet — someone made it", () => {
+    const empty = { type: "table", content: [row({ type: "tableHeader", content: [{ type: "paragraph" }] })] };
+    expect(normalizeDescription(doc(empty)).doc).toMatchObject({ type: "doc", content: [{ type: "table" }] });
+  });
+
+  it("refuses a row outside a table, and a table with no rows", () => {
+    expect(() => normalizeDescription(doc(row(cell("tableCell", "x"))))).toThrow(DomainError);
+    expect(() => normalizeDescription(doc({ type: "table", content: [] }))).toThrow(DomainError);
+  });
+});

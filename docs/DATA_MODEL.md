@@ -3193,7 +3193,7 @@ model WorkItem {
   type               WorkItemType     @default(TASK)
   kind               WorkItemKind     @default(TASK)
   title              String
-  description        Json?                        // Tiptap ProseMirror JSON (checklist = taskList nodes)
+  description        Json?                        // Tiptap ProseMirror JSON (checklist = taskList nodes; simple tables — table/tableRow/tableHeader/tableCell, spans only, no widths — since slice 132, C109: no column change, the normaliser's allow-list)
   descriptionText    String?                      // extracted plain text (search feed, previews)
   stateId            String                       // → WorkflowState (tenantId, id); same project (trigger)
   stateCategory      StateCategory                // DENORMALISED — the only state field the portal reads

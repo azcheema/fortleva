@@ -15,6 +15,8 @@ import type { ActionResult } from "@/lib/server-actions";
 import { MAX_TITLE_LENGTH } from "@/lib/work-view";
 
 import { EditorToolbar, markStates, toolbarMarks, type MarkKey } from "./editor-toolbar";
+import { PasteFormatting } from "./paste-formatting";
+import { TableMenu } from "./table-menu";
 
 /** The description offers the checklist; the comment does not (comment-editor.tsx). */
 const DESCRIPTION_MARKS: readonly MarkKey[] = ["bold", "italic", "strike", "code", "bulletList", "orderedList", "taskList"];
@@ -192,6 +194,10 @@ export function DescriptionEditor({
         checkboxLabel: (node) => t("checkboxLabel", { text: node.textContent.trim() || t("checkboxEmpty") }),
       }),
       Placeholder.configure({ placeholder: t("placeholder") }),
+      // Client-only too (slice 132): markdown and Word lists pasted as
+      // formatting, and a pasted table the server could refuse made one it
+      // keeps. No node, no mark.
+      PasteFormatting,
       // `react-hooks/refs` reports the closure below as a ref read during
       // render, and it is right to be suspicious: that is how a component
       // renders stale values. It is not what happens here. The closure is
@@ -525,10 +531,13 @@ export function DescriptionEditor({
       </div>
 
       {editable ? (
-        <EditorToolbar
-          label={tRich("toolbar.description")}
-          marks={toolbarMarks(editor, DESCRIPTION_MARKS, active, (key) => tRich(`format.${key}`))}
-        />
+        <div className="flex flex-wrap items-center gap-1">
+          <EditorToolbar
+            label={tRich("toolbar.description")}
+            marks={toolbarMarks(editor, DESCRIPTION_MARKS, active, (key) => tRich(`format.${key}`))}
+          />
+          <TableMenu editor={editor} testId="description-table-menu" />
+        </div>
       ) : null}
 
       <div

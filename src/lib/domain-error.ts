@@ -297,6 +297,9 @@ export type DomainErrorCode =
   | "UPDATE_CHANGED" // the draft was saved by somebody else between the two publish transactions
   | "UPDATE_EMPTY" // publishing a post whose sections say nothing
   | "UPDATE_TOO_LARGE" // a section's JSON or its extracted text is past its cap
+  // Slice 132 (C109): a table in a description or an update section past
+  // `table-bounds.ts` (20 columns, 500 rows — spans carried down counted).
+  | "TABLE_TOO_LARGE"
   // The workspace's reply address (Phase 5 slice 100 — src/notify/reply-address.ts).
   | "REPLY_ADDRESS_INVALID" // not an address, or one on the domain Fortleva sends from (it receives nothing)
   | "REPLY_ADDRESS_UNCHANGED" // already the confirmed address

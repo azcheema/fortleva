@@ -49,6 +49,23 @@ describe("normalizeUpdateBody", () => {
     expect(out.text).toBeNull();
   });
 
+  it("keeps a section holding only an empty table, but it says nothing — UPDATE_EMPTY at publish (slice 132)", () => {
+    const emptyTable = {
+      type: "doc",
+      content: [{ type: "table", content: [{ type: "tableRow", content: [{ type: "tableHeader", content: [para()] }] }] }],
+    };
+    const alone = normalizeUpdateBody({ sections: [section("SUMMARY", emptyTable)] });
+    expect(alone.body.sections.map((s) => s.key)).toEqual(["SUMMARY"]);
+    expect(alone.text).toBeNull();
+    const withWords = normalizeUpdateBody({ sections: [section("SUMMARY", emptyTable), section("NEXT", doc(para(text("Launch"))))] });
+    expect(withWords.text).toBe("Launch");
+    // The same for a checklist of empty items: kept, saying nothing.
+    const emptyChecklist = doc({ type: "taskList", content: [{ type: "taskItem", attrs: { checked: false }, content: [para()] }] });
+    const checklist = normalizeUpdateBody({ sections: [section("NEXT", emptyChecklist)] });
+    expect(checklist.body.sections.map((s) => s.key)).toEqual(["NEXT"]);
+    expect(checklist.text).toBeNull();
+  });
+
   it("refuses a shape that is not a body, an unknown key, and a fixed key twice", () => {
     expect(code(() => normalizeUpdateBody(null))).toBe("INVALID_INPUT");
     expect(code(() => normalizeUpdateBody({ sections: "no" }))).toBe("INVALID_INPUT");

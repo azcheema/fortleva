@@ -1,6 +1,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { StarterKit } from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 
 import { MEMBER_ID, MENTION_NODE } from "./mention-node";
 
@@ -36,7 +37,8 @@ type DescriptionOptions = {
 
 /**
  * The description: StarterKit (paragraphs, headings, lists, quote, code,
- * bold/italic/strike, link) plus the checklist. Deliberately absent:
+ * bold/italic/strike, link) plus the checklist and, since slice 132, simple
+ * tables. Deliberately absent:
  * image and file-handler (the paste slice), mention (`Mention.commentId`
  * is NOT NULL, and a name in a client-visible body is the worst bug this
  * product can have), and code-block-lowlight (a later slice).
@@ -50,8 +52,9 @@ export const descriptionExtensions = (options: DescriptionOptions = {}) => [
     // The panel is not a document editor: three heading levels are what
     // a task description needs, and each one is a real outline level.
     heading: { levels: [1, 2, 3] },
-    // Links are typed, never pasted as HTML with their own attributes;
-    // the normaliser is what decides which schemes survive.
+    // A pasted `<a>` does become a link (slice 132's paste work found the
+    // old comment here wrong); its own attributes never survive — the
+    // normaliser keeps an http(s)/mailto href and nothing else.
     link: { openOnClick: false, autolink: false },
   }),
   TaskList,
@@ -61,6 +64,16 @@ export const descriptionExtensions = (options: DescriptionOptions = {}) => [
     // checkbox for …"), whatever the workspace's locale.
     ...(options.checkboxLabel ? { a11y: { checkboxLabel: options.checkboxLabel } } : {}),
   }),
+  // Slice 132 (founder decision C109 (a)): SIMPLE TABLES — rows of header
+  // and body cells holding ordinary blocks. No column widths (`resizable`
+  // off; the normaliser drops `colwidth`), no colours; a merged cell only
+  // as pasted (`colspan`/`rowspan`, bounded by the normaliser), never made
+  // here. The progress update shares this schema, so the static renderer
+  // and the PDF walker draw tables too.
+  Table.configure({ resizable: false }),
+  TableRow,
+  TableHeader,
+  TableCell,
 ];
 
 /**

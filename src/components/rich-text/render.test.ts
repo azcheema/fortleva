@@ -77,6 +77,30 @@ describe("RichText", () => {
     expect(out).toMatch(/<input type="checkbox"[^>]*checked=""[^>]*>/);
   });
 
+  it("renders a table in its own scroller, a header row as th, and a span only as bounded", () => {
+    const cell = (type: string, value: string, attrs?: Record<string, unknown>) => ({
+      type,
+      ...(attrs ? { attrs } : {}),
+      content: [para(text(value))],
+    });
+    const stored = normalizeDescription(
+      doc({
+        type: "table",
+        content: [
+          { type: "tableRow", content: [cell("tableHeader", "Page", { colspan: 2 })] },
+          { type: "tableRow", content: [cell("tableCell", "Home"), cell("tableCell", "<b>x</b>")] },
+        ],
+      }),
+    ).doc;
+    const out = html(stored);
+    expect(out).toContain('<div class="table-scroll"><table><tbody><tr><th colSpan="2"><p>Page</p></th></tr>');
+    expect(out).toContain("<td><p>Home</p></td><td><p>&lt;b&gt;x&lt;/b&gt;</p></td>");
+    expect(out).not.toContain("colwidth");
+    // A span the normaliser never let through is not drawn either.
+    const crafted = html(doc({ type: "table", content: [{ type: "tableRow", content: [cell("tableCell", "x", { colspan: 999, rowspan: 1.5 })] }] }));
+    expect(crafted).toContain("<td><p>x</p></td>");
+  });
+
   it("prints nothing for a node it does not know, and nothing at all for a non-document", () => {
     // Never normalised — the belt for a row written past the gate.
     expect(html(doc({ type: "iframe", attrs: { src: "https://evil.test" } }, para(text("ok"))))).toBe(

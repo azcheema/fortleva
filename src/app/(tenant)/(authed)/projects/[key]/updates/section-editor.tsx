@@ -6,10 +6,29 @@ import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
 import { EditorToolbar, markStates, toolbarMarks, type MarkKey } from "@/components/rich-text/editor-toolbar";
+import { PasteFormatting } from "@/components/rich-text/paste-formatting";
+import { TableMenu } from "@/components/rich-text/table-menu";
 import { descriptionExtensions } from "@/lib/rich-text/extensions";
 import { cn } from "@/lib/utils";
 
 const SECTION_MARKS: readonly MarkKey[] = ["bold", "italic", "strike", "code", "bulletList", "orderedList", "taskList"];
+
+/**
+ * Nothing typed and nothing made. Tiptap's `isEmpty` reads a table of empty
+ * cells — or a checklist of empty items — as empty, so a table just inserted
+ * was sent as "no section" and gone after a reload (slice 132's re-check,
+ * NIT-1); the normaliser keeps both, and the publish gate still refuses a
+ * post that says nothing (`normalizeUpdateBody`'s text).
+ */
+export function isBlank(editor: Editor): boolean {
+  if (!editor.isEmpty) return false;
+  let made = false;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "table" || node.type.name === "taskItem") made = true;
+    return !made;
+  });
+  return !made;
+}
 
 /**
  * ONE SECTION OF THE COMPOSER — the description's schema (headings,
@@ -49,7 +68,11 @@ export function SectionEditor({
     onChangeRef.current = onChange;
   });
 
-  const extensions = useMemo(() => [...descriptionExtensions(), Placeholder.configure({ placeholder })], [placeholder]);
+  // `PasteFormatting` is client-only (slice 132): no node, no mark.
+  const extensions = useMemo(
+    () => [...descriptionExtensions(), Placeholder.configure({ placeholder }), PasteFormatting],
+    [placeholder],
+  );
   const editorProps = useMemo(
     () => ({
       attributes: {
@@ -68,7 +91,7 @@ export function SectionEditor({
     immediatelyRender: false,
     editorProps,
     onUpdate: ({ editor: e }) => {
-      onChangeRef.current(e.isEmpty ? null : JSON.parse(JSON.stringify(e.getJSON())));
+      onChangeRef.current(isBlank(e) ? null : JSON.parse(JSON.stringify(e.getJSON())));
     },
   });
 
@@ -84,10 +107,13 @@ export function SectionEditor({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <EditorToolbar
-        label={toolbarLabel}
-        marks={toolbarMarks(editor, SECTION_MARKS, state?.marks ?? null, (key) => t(`format.${key}`))}
-      />
+      <div className="flex flex-wrap items-center gap-1">
+        <EditorToolbar
+          label={toolbarLabel}
+          marks={toolbarMarks(editor, SECTION_MARKS, state?.marks ?? null, (key) => t(`format.${key}`))}
+        />
+        <TableMenu editor={editor} testId={`${testId}-table-menu`} />
+      </div>
       <div
         className={cn(
           "rounded-md border border-input bg-card",

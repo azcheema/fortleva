@@ -2026,6 +2026,7 @@
     "UPDATE_EMPTY": "Write something in at least one section before publishing.",
     "UPDATE_CHANGED": "The draft changed while it was being published. Check it and publish again.",
     "UPDATE_TOO_LARGE": "One of the sections is too long to save.",
+    "TABLE_TOO_LARGE": "A table can have at most 20 columns and 500 rows. Make it smaller, or split it in two.",
     "DOWNLOAD_RATE_LIMITED": "You have downloaded a lot of files in a short time. Wait a few minutes and try again.",
     "REVEAL_BUDGET_EXCEEDED": "You have revealed a lot of secrets in the last hour. Wait a while and try again — every reveal is logged.",
     "VAULT_BUSY": "The vault is busy right now. Try again in a moment.",
@@ -5210,6 +5211,17 @@
       "taskList": "Checklist",
       "heading": "Heading",
       "underline": "Underline"
+    },
+    "table": {
+      "menu": "Table",
+      "insert": "Insert a table",
+      "addRowAbove": "Add a row above",
+      "addRowBelow": "Add a row below",
+      "addColumnLeft": "Add a column to the left",
+      "addColumnRight": "Add a column to the right",
+      "deleteRow": "Delete this row",
+      "deleteColumn": "Delete this column",
+      "deleteTable": "Delete the table"
     },
     "mention": {
       "list": "Teammates to mention",

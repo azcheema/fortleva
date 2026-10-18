@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 
 import { MENTION_NODE } from "@/lib/rich-text/mention-node";
+import { TABLE_MAX_COLUMNS, TABLE_MAX_ROWS } from "@/lib/rich-text/table-bounds";
 import { cn } from "@/lib/utils";
 
 /**
@@ -170,6 +171,32 @@ function renderNode(raw: unknown, key: number, ctx: Ctx): React.ReactNode {
       return <br key={key} />;
     case "horizontalRule":
       return <hr key={key} />;
+    // Slice 132 (C109): a simple table — in a scroller of its own, so a wide
+    // one never widens the page on a phone. A span is drawn only as the
+    // normaliser bounded it (`table-bounds.ts`).
+    case "table":
+      return (
+        <div key={key} className="table-scroll">
+          <table>
+            <tbody>{children(node, ctx)}</tbody>
+          </table>
+        </div>
+      );
+    case "tableRow":
+      return <tr key={key}>{children(node, ctx)}</tr>;
+    case "tableHeader":
+    case "tableCell": {
+      const span = (name: "colspan" | "rowspan", max: number) => {
+        const v = node.attrs?.[name];
+        return typeof v === "number" && Number.isInteger(v) && v > 1 && v <= max ? v : undefined;
+      };
+      const Cell = node.type === "tableHeader" ? "th" : "td";
+      return (
+        <Cell key={key} colSpan={span("colspan", TABLE_MAX_COLUMNS)} rowSpan={span("rowspan", TABLE_MAX_ROWS)}>
+          {children(node, ctx)}
+        </Cell>
+      );
+    }
     case "doc":
       return children(node, ctx);
     default:

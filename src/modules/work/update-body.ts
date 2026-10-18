@@ -137,9 +137,13 @@ export function normalizeUpdateBody(input: unknown): NormalizedUpdateBody {
     }
   }
 
+  // Only sections that SAY something: a section holding an empty table is
+  // kept in the draft (slice 132 — someone made it), but says nothing, so a
+  // post of nothing else stays UPDATE_EMPTY at publish.
+  const said = texts.filter((t) => t.trim() !== "");
   return {
     body: { sections, metrics: { include } },
-    text: texts.length === 0 ? null : texts.join("\n\n"),
+    text: said.length === 0 ? null : said.join("\n\n"),
   };
 }
 

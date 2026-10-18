@@ -2026,6 +2026,7 @@
     "UPDATE_EMPTY": "Skriv något i minst ett avsnitt innan du publicerar.",
     "UPDATE_CHANGED": "Utkastet ändrades medan det publicerades. Kontrollera det och publicera igen.",
     "UPDATE_TOO_LARGE": "Ett av avsnitten är för långt för att sparas.",
+    "TABLE_TOO_LARGE": "En tabell kan ha högst 20 kolumner och 500 rader. Gör den mindre eller dela upp den i två.",
     "DOWNLOAD_RATE_LIMITED": "Du har laddat ner många filer på kort tid. Vänta några minuter och försök igen.",
     "REVEAL_BUDGET_EXCEEDED": "Du har visat många hemligheter den senaste timmen. Vänta en stund och försök igen – varje visning loggas.",
     "VAULT_BUSY": "Valvet är upptaget just nu. Försök igen om en stund.",
@@ -5210,6 +5211,17 @@
       "taskList": "Checklista",
       "heading": "Rubrik",
       "underline": "Understruken"
+    },
+    "table": {
+      "menu": "Tabell",
+      "insert": "Infoga en tabell",
+      "addRowAbove": "Lägg till en rad ovanför",
+      "addRowBelow": "Lägg till en rad nedanför",
+      "addColumnLeft": "Lägg till en kolumn till vänster",
+      "addColumnRight": "Lägg till en kolumn till höger",
+      "deleteRow": "Ta bort raden",
+      "deleteColumn": "Ta bort kolumnen",
+      "deleteTable": "Ta bort tabellen"
     },
     "mention": {
       "list": "Kollegor att nämna",

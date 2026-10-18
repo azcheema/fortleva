@@ -61,6 +61,39 @@ const EVERYTHING = normalizeUpdateSection({
     { type: "blockquote", content: [para(text("Quoted"))] },
     { type: "codeBlock", attrs: { language: "sql" }, content: [text("SELECT 1;\nSELECT 2;")] },
     { type: "horizontalRule" },
+    // Slice 132 (C109): a table — a header row, a merged header cell, a
+    // bold cell, a cell holding a list.
+    {
+      type: "table",
+      content: [
+        {
+          type: "tableRow",
+          content: [
+            { type: "tableHeader", attrs: { colspan: 2 }, content: [para(text("Page and owner"))] },
+            { type: "tableHeader", content: [para(text("Status"))] },
+          ],
+        },
+        {
+          type: "tableRow",
+          content: [
+            { type: "tableCell", attrs: { rowspan: 2 }, content: [para(text("Home"))] },
+            { type: "tableCell", content: [para(text("Åsa", [{ type: "bold" }]))] },
+            {
+              type: "tableCell",
+              content: [{ type: "bulletList", content: [{ type: "listItem", content: [para(text("Live"))] }] }],
+            },
+          ],
+        },
+        // Under "Home" (merged down): its first column is an empty box.
+        {
+          type: "tableRow",
+          content: [
+            { type: "tableCell", content: [para(text("Bo"))] },
+            { type: "tableCell", content: [para(text("Draft"))] },
+          ],
+        },
+      ],
+    },
     para(text("The end.")),
   ],
 }).doc;
