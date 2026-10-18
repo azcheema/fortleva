@@ -72,6 +72,7 @@
   "nav": {
     "home": "Hem",
     "calendar": "Kalender",
+    "activity": "Aktivitet",
     "files": "Filer",
     "members": "Medlemmar",
     "settings": "Inställningar",
@@ -6909,6 +6910,58 @@
     "moveTomorrow": "I morgon, {date}",
     "moved": "Flyttade {key} till {date}",
     "moveFailed": "Uppgiften flyttades inte. Kalendern visar dess nuvarande dag."
+  },
+  "activity": {
+    "title": "Aktivitet",
+    "description": "Det som har hänt i dina projekt, senast först.",
+    "forbidden": "Du kan inte se arbetet i den här arbetsytan.",
+    "today": "I dag",
+    "yesterday": "I går",
+    "you": "Du",
+    "system": "Fortleva",
+    "someone": "Någon",
+    "contactActor": "{name} på {client}",
+    "workspace": "Arbetsyta",
+    "filters": "Filter",
+    "projectFilter": "Projekt",
+    "allProjects": "Alla projekt",
+    "clientFilter": "Kund",
+    "allClients": "Alla kunder",
+    "earlier": "Visa tidigare",
+    "backToToday": "Tillbaka till i dag",
+    "end": "Det var allt – inget hände tidigare.",
+    "nothingInWindow": "Inget hände från {from} till {to}.",
+    "updateLabel": "uppdatering #{seq}",
+    "updateNoNumber": "en uppdatering",
+    "empty": {
+      "title": "Inget har hänt än",
+      "body": "När arbete görs i dina projekt syns det här.",
+      "action": "Till projekten"
+    },
+    "emptyFiltered": {
+      "title": "Inget hände här",
+      "body": "Inget hände i det här projektet eller för den här kunden de här dagarna.",
+      "clear": "Rensa filter"
+    },
+    "event": {
+      "taskAdded": "<who>{actor}</who> lade till <link>{task}</link>",
+      "taskRequested": "<who>{actor}</who> skickade en förfrågan: <link>{task}</link>",
+      "taskDone": "<who>{actor}</who> slutförde <link>{task}</link>",
+      "commentTask": "<who>{actor}</who> kommenterade <link>{task}</link>",
+      "commentFile": "<who>{actor}</who> kommenterade filen <link>{file}</link>",
+      "commentUpdate": "<who>{actor}</who> kommenterade <link>{update}</link>",
+      "commentVersion": "<who>{actor}</who> kommenterade version <link>{version}</link>",
+      "fileAdded": "<who>{actor}</who> lade till filen <link>{file}</link>",
+      "fileVersion": "<who>{actor}</who> laddade upp version {n} av <link>{file}</link>",
+      "fileApproved": "<who>{actor}</who> godkände <link>{file}</link>",
+      "fileChanges": "<who>{actor}</who> bad om ändringar i <link>{file}</link>",
+      "updateShared": "<who>{actor}</who> skickade <link>{update}</link> till kunden",
+      "updateInternal": "<who>{actor}</who> publicerade <link>{update}</link> för teamet",
+      "milestoneDone": "Milstolpen <link>{milestone}</link> nåddes",
+      "versionShipped": "Version <link>{version}</link> levererades",
+      "versionApproved": "<who>{actor}</who> godkände version <link>{version}</link>",
+      "versionChanges": "<who>{actor}</who> bad om ändringar i version <link>{version}</link>"
+    }
   },
   "tasks": {
     "title": "Uppgifter",

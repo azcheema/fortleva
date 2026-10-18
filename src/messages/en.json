@@ -72,6 +72,7 @@
   "nav": {
     "home": "Home",
     "calendar": "Calendar",
+    "activity": "Activity",
     "files": "Files",
     "members": "Members",
     "settings": "Settings",
@@ -6909,6 +6910,58 @@
     "moveTomorrow": "Tomorrow, {date}",
     "moved": "Moved {key} to {date}",
     "moveFailed": "The task wasn't moved. The calendar shows its current day."
+  },
+  "activity": {
+    "title": "Activity",
+    "description": "What happened across your projects, newest first.",
+    "forbidden": "You can’t see the work in this workspace.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "you": "You",
+    "system": "Fortleva",
+    "someone": "Someone",
+    "contactActor": "{name} at {client}",
+    "workspace": "Workspace",
+    "filters": "Filters",
+    "projectFilter": "Project",
+    "allProjects": "All projects",
+    "clientFilter": "Client",
+    "allClients": "All clients",
+    "earlier": "Show earlier",
+    "backToToday": "Back to today",
+    "end": "That’s all — nothing happened before this.",
+    "nothingInWindow": "Nothing happened from {from} to {to}.",
+    "updateLabel": "update #{seq}",
+    "updateNoNumber": "an update",
+    "empty": {
+      "title": "Nothing has happened yet",
+      "body": "When work is done in your projects, it shows up here.",
+      "action": "Go to projects"
+    },
+    "emptyFiltered": {
+      "title": "Nothing happened here",
+      "body": "Nothing happened in this project or for this client in these days.",
+      "clear": "Clear filters"
+    },
+    "event": {
+      "taskAdded": "<who>{actor}</who> added <link>{task}</link>",
+      "taskRequested": "<who>{actor}</who> sent a request: <link>{task}</link>",
+      "taskDone": "<who>{actor}</who> finished <link>{task}</link>",
+      "commentTask": "<who>{actor}</who> commented on <link>{task}</link>",
+      "commentFile": "<who>{actor}</who> commented on the file <link>{file}</link>",
+      "commentUpdate": "<who>{actor}</who> commented on <link>{update}</link>",
+      "commentVersion": "<who>{actor}</who> commented on version <link>{version}</link>",
+      "fileAdded": "<who>{actor}</who> added the file <link>{file}</link>",
+      "fileVersion": "<who>{actor}</who> uploaded version {n} of <link>{file}</link>",
+      "fileApproved": "<who>{actor}</who> approved <link>{file}</link>",
+      "fileChanges": "<who>{actor}</who> asked for changes to <link>{file}</link>",
+      "updateShared": "<who>{actor}</who> sent <link>{update}</link> to the client",
+      "updateInternal": "<who>{actor}</who> posted <link>{update}</link> for the team",
+      "milestoneDone": "Milestone <link>{milestone}</link> reached",
+      "versionShipped": "Version <link>{version}</link> shipped",
+      "versionApproved": "<who>{actor}</who> approved version <link>{version}</link>",
+      "versionChanges": "<who>{actor}</who> asked for changes to version <link>{version}</link>"
+    }
   },
   "tasks": {
     "title": "Tasks",

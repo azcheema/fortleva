@@ -18,6 +18,7 @@ export type NavIcon =
   | "projects"
   | "tasks"
   | "calendar"
+  | "activity"
   | "time"
   | "files"
   | "vault"
@@ -54,6 +55,7 @@ export type NavEntry = {
     | "projects"
     | "tasks"
     | "calendar"
+    | "activity"
     | "time"
     | "files"
     | "vault"
@@ -136,6 +138,17 @@ export const NAV: readonly NavEntry[] = [
     labelKey: "calendar",
     href: "/calendar",
     icon: "calendar",
+    permission: "work_item:view",
+  },
+  // Slice 133 (founder decision C110 (c)): what happened across the projects
+  // the member reaches — work events, newest first, by day. Gated on the code
+  // its read asks first (it also asks `project:view`, as Tasks does). No `G`
+  // key (A is Account's); not a phone tab — it is in More.
+  {
+    id: "activity",
+    labelKey: "activity",
+    href: "/activity",
+    icon: "activity",
     permission: "work_item:view",
   },
   // 2T (UI.md §3.1 "Time"; §3.3 the mobile Timer tab): hidden without time:track.

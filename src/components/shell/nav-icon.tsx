@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   ArchiveIcon,
   Building2Icon,
   CoinsIcon,
@@ -44,6 +45,8 @@ const ICONS: Record<NavIconName, React.ComponentType<LucideProps>> = {
   // The calendar of tasks (slice 128). Not Renewals' clock-calendar, and not
   // the due date's plain calendar (the history's and the calendar's "Move…").
   calendar: CalendarDaysIcon,
+  // What happened across projects (slice 133).
+  activity: ActivityIcon,
   time: TimerIcon,
   files: FolderIcon,
   // Not the key: that glyph is Roles' (and a login row's), and one icon

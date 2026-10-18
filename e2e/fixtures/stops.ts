@@ -159,6 +159,8 @@ export const stops = (seed: E2ESeed): Stop[] => {
     { name: "calendar-week", path: "/calendar?view=week" },
     // Slice 130 (C107): every open task in one list, soonest due first.
     { name: "tasks", path: "/tasks" },
+    // Slice 133 (C110): what happened across projects, by day.
+    { name: "activity", path: "/activity" },
     {
       // Global chrome (UI.md §3.2) that held none of the design shots
       // until now — and the stop that would have caught the palette

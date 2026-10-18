@@ -2329,6 +2329,8 @@ model Document {
   @@index([tenantId, clientId, visibility])
   @@index([tenantId, projectId, kind])
   @@index([tenantId, attachedToType, attachedToId])
+  // The Activity page's window, by time across the workspace (slice 133) — 20261102090000.
+  @@index([tenantId, createdAt])
   // Composite GIN needs the btree_gin extension (created in migration 001)
   @@index([tenantId(ops: raw("text_ops")), tags], type: Gin)
   @@map("document")
@@ -2926,6 +2928,8 @@ model WorkItemActivity {
   // The portal fan-out's leg over this table, and its unindexed FK —
   // 20260920190000. Without it the only usable prefix is tenant_id.
   @@index([tenantId, projectId])
+  // The Activity page's window, by time across the workspace (slice 133) — 20261102090000.
+  @@index([tenantId, createdAt])
   @@map("work_item_activity")
 }
 
@@ -3129,6 +3133,8 @@ model Comment {
   @@index([tenantId, subjectType, subjectId, createdAt])
   @@index([tenantId, clientId, visibility])
   @@index([tenantId, projectId, createdAt])
+  // The Activity page's window, by time across the workspace (slice 133) — 20261102090000.
+  @@index([tenantId, createdAt])
   @@map("comment")
 }
 

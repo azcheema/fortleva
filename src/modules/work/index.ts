@@ -142,6 +142,14 @@ export {
 export { readCalendar, type CalendarCopy, type CalendarEntry, type CalendarRead } from "./calendar";
 // Slice 130 — every task in one list (C107): its one read.
 export { listAllTasks, type TaskListEntry, type TaskListRead } from "./all-tasks";
+export {
+  readActivityFeed,
+  type ActivityFeedRead,
+  type FeedActor,
+  type FeedEvent,
+  type FeedPlace,
+  type FeedSubject,
+} from "./activity-feed";
 // Slice 131 — moving a task to another project of its client (C108).
 export { followMovedKey, moveItemToProject, readMoveFacts, type MoveDone, type MoveFacts, type MoveTarget } from "./move";
 export { ACTIVITY_PAGE_SIZE, type ActivityActor, type ActivityEntry, type ItemActivityPage } from "./activity";

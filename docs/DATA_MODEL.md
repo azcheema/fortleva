@@ -3323,6 +3323,10 @@ model WorkItemActivity {
 
   @@index([tenantId, workItemId, createdAt])
   @@index([tenantId, clientId, visibility])
+  // Slice 133 (C110, migration 20261102090000): the Activity page reads work
+  // events across a workspace BY TIME, so `(tenantId, createdAt)` here and on
+  // `document` and `comment` too. No column changes.
+  @@index([tenantId, createdAt])
 }
 
 /// Label — tenant-wide (optionally project-scoped) tags. INTERNAL-ONLY IN
