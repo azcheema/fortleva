@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { strToU8, zipSync, type Zippable } from "fflate";
 
 import { record } from "@/audit/record";
-import type { MemberActor } from "@/authz/authorize";
+import { resolvePermissions, type MemberActor } from "@/authz/authorize";
+import { deny } from "@/authz/errors";
 import { withTenant, type TenantDb } from "@/db";
 import { requireAccess } from "@/entitlements/resolver";
 import { newId } from "@/lib/ids";
 import { getStorage } from "@/storage";
+import { softDeleteDocumentsInTx } from "@/documents/service";
 
 import {
   buildManifest,
@@ -26,8 +28,9 @@ import {
  * path IS the continuity commitment). One JSONL file per model + a
  * schema-versioned manifest, packaged as a zip that lands through the
  * StorageTransport as a FileObject(kind=EXPORT) + Document(kind=EXPORT,
- * INTERNAL) so it downloads via the ordinary presigned path and shows
- * up in /files like any other document.
+ * INTERNAL). It is listed, downloaded and deleted ONLY on Settings → Export,
+ * under `tenant:export` (slice 136b) — never in Files, which once listed it
+ * to every holder of `document:view` and let them download it.
  *
  * Gate: `tenant:export` (✦ — the caller's action turns MFA_REQUIRED
  * into step-up navigation). The dump itself runs under the requesting
@@ -278,10 +281,20 @@ export type ExportListItem = {
   createdByMemberId: string | null;
 };
 
-/** Previous exports (settings:view): EXPORT documents, newest first. */
+/**
+ * Previous exports: EXPORT documents, newest first — `settings:view` AND
+ * holding `tenant:export` (slice 136b: only whoever may make an export sees
+ * the ones made; before, every `settings:view` holder did, and downloaded
+ * them through Files). Held is enough here, its second factor stale or not —
+ * the list is the way TO the step-up, which the download and the delete ask
+ * (`getExportDownloadUrl`, `deleteExport`); an impersonating operator holds no
+ * `export` verb.
+ */
 export async function listExports(ctx: ExportCtx): Promise<ExportListItem[]> {
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "settings:view");
+    const answers = await resolvePermissions(tx, ctx.actor, ["tenant:export"]);
+    if (!answers.allowed.has("tenant:export") && !answers.afterStepUp.has("tenant:export")) deny("FORBIDDEN");
     const rows = await tx.document.findMany({
       where: { kind: "EXPORT", deletedAt: null },
       orderBy: { createdAt: "desc" },
@@ -305,5 +318,30 @@ export async function listExports(ctx: ExportCtx): Promise<ExportListItem[]> {
       createdAt: d.createdAt,
       createdByMemberId: d.createdByMemberId,
     }));
+  });
+}
+
+/**
+ * Delete an export (slice 136b; the 136b review's M1 — Files, where an owner
+ * once deleted one, no longer reaches it): `tenant:export` (✦, so a stale
+ * factor steps up), asked before the row is read. The document's ordinary
+ * soft delete, audited `document.deleted` in the same transaction, as Files'
+ * delete was. RECORDED (pre-existing, Files' delete the same): a soft-deleted
+ * document's bytes stay in storage and in `storageUsedBytes` — nothing
+ * reclaims them yet; the confirmation promises only that it leaves the list.
+ */
+export async function deleteExport(ctx: ExportCtx, documentId: string): Promise<void> {
+  await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "tenant:export");
+    const doc = await tx.document.findFirst({
+      where: { id: documentId, kind: "EXPORT", deletedAt: null },
+      select: { id: true },
+    });
+    if (!doc) deny("NOT_FOUND");
+    // The UPDATE decides (it is the select): a concurrent delete that took the
+    // row first leaves nothing for this one — NOT_FOUND, never a "deleted"
+    // with no audit row (`softDeleteDocument`'s rule; the re-check's L-a).
+    const taken = await softDeleteDocumentsInTx(tx, ctx.tenantId, [documentId], new Date());
+    if (taken.length === 0) deny("NOT_FOUND");
   });
 }

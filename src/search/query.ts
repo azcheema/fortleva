@@ -355,6 +355,14 @@ async function runSearch(
          -- occupy a cap slot that a permitted one would have taken.
          AND si.entity_type = ANY(${types}::text[])
          AND si.search @@ t.tsq
+         -- Never a document the Files pages never list (slice 136b): a
+         -- workspace EXPORT (Settings → Export's, tenant:export) or a client
+         -- REPORT (the Reports tab's, report:view). A TERM, by this file's
+         -- rule — the hydrate's filter alone let them take the per-type cap
+         -- slots a real file would have had (the 136b review's L1).
+         AND NOT (si.entity_type = 'DOCUMENT' AND EXISTS (
+           SELECT 1 FROM document d
+            WHERE d.tenant_id = si.tenant_id AND d.id = si.entity_id AND d.kind IN ('EXPORT', 'REPORT')))
          AND ((si.entity_type <> 'CREDENTIAL_ITEM' AND (
            ${unscoped}
            OR si.client_id = ANY(${clientIds}::text[])
@@ -462,7 +470,11 @@ async function hydrate(
       : [],
     documentIds.length
       ? tx.document.findMany({
-          where: { tenantId: ctx.tenantId, id: { in: documentIds }, deletedAt: null },
+          // The belt under the query's own term (slice 136b): never a
+          // workspace EXPORT (Settings → Export's, `tenant:export` only) or a
+          // client REPORT (the Reports tab's, `report:view`) — either hit
+          // would link to a Files page that does not show it.
+          where: { tenantId: ctx.tenantId, id: { in: documentIds }, deletedAt: null, kind: { notIn: ["EXPORT", "REPORT"] } },
           select: { id: true },
         })
       : [],

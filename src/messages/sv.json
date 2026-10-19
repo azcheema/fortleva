@@ -1118,7 +1118,7 @@
       "noPermission": "Du har inte behörighet att se exporter.",
       "previous": "Tidigare exporter",
       "emptyTitle": "Inga exporter ännu",
-      "emptyDescription": "Skapa en ovan; varje export visas här och under Filer.",
+      "emptyDescription": "Skapa en ovan; varje export visas här, för den som kan skapa en.",
       "columns": {
         "name": "Namn",
         "created": "Skapad",
@@ -1127,7 +1127,10 @@
       "description": "Ta med dig hela arbetsytan, när du vill.",
       "commitmentTitle": "Er data är er",
       "generatingHint": "Arkivet byggs. Det kan ta en minut på en stor arbetsyta — du kan lämna sidan.",
-      "commitmentBody": "Allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte."
+      "commitmentBody": "Allt den här arbetsytan innehåller kan när som helst exporteras som ett öppet, dokumenterat arkiv — det är vårt kontinuitetslöfte.",
+      "previousNeedsPermission": "Bara den som kan skapa en export kan se de exporter som gjorts eller ladda ner dem: en export innehåller hela arbetsytans data.",
+      "delete": "Ta bort",
+      "deleteConfirm": "Ta bort {name}? Den försvinner från listan och kan inte längre laddas ner. Inget i arbetsytan ändras."
     },
     "rates": {
       "title": "Timpriser",

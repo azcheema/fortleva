@@ -10,13 +10,23 @@ import { getPlatformClient } from "@/db/client";
 import { withTenant } from "@/db";
 import { createClient } from "@/clients/service";
 import { getActiveTenantDek } from "@/crypto/tenant-key";
-import { commitUpload, createUpload, getDownloadUrl } from "@/documents/service";
+import {
+  commitUpload,
+  createUpload,
+  getDownloadUrl,
+  getExportDownloadUrl,
+  listDocuments,
+  renameDocument,
+  softDeleteDocument,
+} from "@/documents/service";
 import { setupTenant } from "@/members/dbtest-fixture";
 import { createProject } from "@/projects/service";
+import { search } from "@/search/query";
+import { PER_TYPE_LIMIT } from "@/search/shape";
 import { LocalDiskTransport, setStorage } from "@/storage";
 
 import { EXPORT_MODELS, type ExportManifest } from "./manifest";
-import { generateTenantExport, listExports, type ExportCtx } from "./service";
+import { deleteExport, generateTenantExport, listExports, type ExportCtx } from "./service";
 
 /**
  * Export v0 round-trip against the real DB as app_runtime (RLS live)
@@ -223,17 +233,103 @@ describe("generateTenantExport", () => {
     expect(manifest.models.find((m) => m.name === "document")!.rowCount).toBe(2);
   });
 
-  it("listExports needs settings:view (employee: FORBIDDEN); download records export.downloaded", async () => {
+  it("listExports needs settings:view (employee: FORBIDDEN) — and tenant:export (below); download records export.downloaded", async () => {
     await expect(
       listExports({ tenantId: a.tenantId, actor: a.seats.employee.actor }),
     ).rejects.toMatchObject({ reason: "FORBIDDEN" });
     const [latest] = await listExports(ctxA);
-    const dl = await getDownloadUrl(ctxA, latest!.documentId);
+    const dl = await getExportDownloadUrl(ctxA, latest!.documentId);
     expect(dl.filename).toBe(latest!.name);
     const downloaded = await platform().auditEvent.findMany({
       where: { tenantId: a.tenantId, action: "export.downloaded", targetId: latest!.documentId },
     });
     expect(downloaded.length).toBe(1);
+  });
+
+  it("an export is never a FILE (slice 136b): not in Files, not a search hit, listed, downloaded and deleted only under tenant:export", async () => {
+    const [latest] = await listExports(ctxA);
+    const exportId = latest!.documentId;
+    const employee = { tenantId: a.tenantId, actor: a.seats.employee.actor };
+    const manager = { tenantId: a.tenantId, actor: a.seats.manager.actor };
+    // An owner whose second factor is enrolled but OLD — what a step-up is for.
+    const staleOwner = {
+      tenantId: a.tenantId,
+      actor: { memberId: a.seats.owner.memberId, mfa: { enrolled: true, verifiedAt: new Date(Date.now() - 6 * 3_600_000) } },
+    };
+    // Files lists it to nobody — not the employee who could download it before, not the owner.
+    for (const ctx of [employee, manager, ctxA]) {
+      expect((await listDocuments(ctx)).map((d) => d.id)).not.toContain(exportId);
+    }
+    // Files' download does not know it — for anybody, the owner included: not
+    // found, exactly as a missing id (no oracle).
+    for (const ctx of [employee, manager, ctxA]) {
+      await expect(getDownloadUrl(ctx, exportId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    }
+    // Its own download asks tenant:export (✦) and nothing else: an employee and a
+    // manager (document:view, every client) are refused before the row is read;
+    // the owner with a stale factor is sent to STEP UP.
+    await expect(getExportDownloadUrl(employee, exportId)).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    await expect(getExportDownloadUrl(manager, exportId)).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    await expect(getExportDownloadUrl(staleOwner, exportId)).rejects.toMatchObject({ reason: "MFA_REQUIRED", mfaRemedy: "step_up" });
+    // …and only an export: an ordinary file's id is not found there.
+    const [file] = await listDocuments(ctxA);
+    await expect(getExportDownloadUrl(ctxA, file!.id)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    // The list is a manager's no more (settings:view alone); a holder's with a stale factor still.
+    await expect(listExports(manager)).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    expect((await listExports(staleOwner)).length).toBeGreaterThan(0);
+    // No Files verb reaches it, the owner's included.
+    await expect(renameDocument(ctxA, exportId, "mine.zip")).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    await expect(softDeleteDocument(ctxA, exportId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    // Never a search hit, whoever searches — though its name IS in the index
+    // (the control: the trigger indexes every document, exports included).
+    const indexed = await platform().$queryRaw<{ title: string }[]>`
+      SELECT title FROM search_index WHERE tenant_id = ${a.tenantId} AND entity_type = 'DOCUMENT' AND entity_id = ${exportId}`;
+    expect(indexed.map((r) => r.title)).toEqual([latest!.name]);
+    // The manager reaches every client, so its search runs (the fixture's
+    // employee reaches none and would return before the query). The control: a
+    // FILE of the very same name IS found — so the name is a query that matches.
+    const twin = await platform().document.create({ data: { tenantId: a.tenantId, name: latest!.name }, select: { id: true } });
+    try {
+      for (const ctx of [manager, ctxA]) {
+        const r = await search(ctx, latest!.name);
+        expect(r.kind).toBe("results");
+        const ids = r.kind === "results" ? r.hits.map((h) => h.entityId) : [];
+        expect(ids).toContain(twin.id);
+        expect(ids).not.toContain(exportId);
+      }
+    } finally {
+      await platform().document.delete({ where: { id: twin.id } });
+    }
+    // Deleted only under tenant:export, on Settings → Export — and audited.
+    await expect(deleteExport(manager, exportId)).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    await expect(deleteExport(staleOwner, exportId)).rejects.toMatchObject({ reason: "MFA_REQUIRED" });
+    await deleteExport(ctxA, exportId);
+    expect((await listExports(ctxA)).map((e) => e.documentId)).not.toContain(exportId);
+    expect(
+      await platform().auditEvent.count({ where: { tenantId: a.tenantId, action: "document.deleted", targetId: exportId } }),
+    ).toBe(1);
+    await expect(deleteExport(ctxA, exportId)).rejects.toMatchObject({ reason: "NOT_FOUND" });
+  });
+
+  it("exports never take a search's document slots from a real file (slice 136b, the review's L1)", async () => {
+    // More hidden documents than the per-type cap, all matching, and one real file.
+    const word = `zebra${Date.now().toString(36)}`;
+    const hidden = Array.from({ length: PER_TYPE_LIMIT + 1 }, (_, i) => ({
+      tenantId: a.tenantId,
+      name: `${word} plan ${i}`,
+      kind: "EXPORT" as const,
+    }));
+    // The real file FIRST: on an equal rank the newer row wins the slot, so the
+    // hidden ones must be the newer to be able to crowd it out.
+    const real = await platform().document.create({ data: { tenantId: a.tenantId, name: `${word} notes` }, select: { id: true } });
+    await platform().document.createMany({ data: hidden });
+    try {
+      const r = await search(ctxA, word);
+      const docs = r.kind === "results" ? r.hits.filter((h) => h.entityType === "DOCUMENT") : [];
+      expect(docs.map((h) => h.entityId)).toEqual([real.id]);
+    } finally {
+      await platform().document.deleteMany({ where: { tenantId: a.tenantId, name: { startsWith: word } } });
+    }
   });
 
   it("tenant B's export contains only tenant B", async () => {

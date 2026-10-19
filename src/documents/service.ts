@@ -183,6 +183,18 @@ const assertAnchorVisibility = (
   }
 };
 
+/**
+ * Kinds of document that are NOT files of the Files pages, and so are never
+ * listed, versioned, renamed, shared, signed off or deleted through this
+ * service: a client REPORT is the client's Reports tab's (slice 115, C91 (b),
+ * `./reports.ts`); a workspace EXPORT is Settings → Export's (slice 136b) —
+ * the whole workspace's data, which only a holder of `tenant:export` may see
+ * or download. Until slice 136b an EXPORT, having no client and no project,
+ * was listed in Files to every holder of `document:view` and downloadable
+ * there (the slice 136 security review's finding).
+ */
+const NOT_A_FILE = ["REPORT", "EXPORT"] as const;
+
 /** Member-plane scope gate for an existing document row (NOT_FOUND outside scope). */
 async function assertDocumentInScope(
   tx: TenantDb,
@@ -446,9 +458,9 @@ export async function addVersion(
   let versionNumber = 0;
   await commitFileObject(ctx, input.fileObjectId, async (tx, obj) => {
     const doc = await tx.document.findFirst({
-      // Never a client REPORT (slice 115): a report has no new versions — it
+      // Never a workspace EXPORT (slice 136b, NOT_A_FILE), nor a client REPORT (slice 115): a report has no new versions — it
       // is hidden or deleted and uploaded again (`./reports.ts`).
-      where: { id: input.documentId, deletedAt: null, kind: { not: "REPORT" } },
+      where: { id: input.documentId, deletedAt: null, kind: { notIn: [...NOT_A_FILE] } },
       select: {
         id: true,
         clientId: true,
@@ -512,10 +524,10 @@ export async function requestDocumentSignoff(
   return withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
     const doc = await tx.document.findFirst({
-      // Never a client REPORT (slice 115; the security review's NIT-2): the
+      // Never a workspace EXPORT (slice 136b, NOT_A_FILE), nor a client REPORT (slice 115; the security review's NIT-2): the
       // answer for one is NOT_FOUND, as on every other Files path — not "not a
       // deliverable", which would say it exists to a member without `report:view`.
-      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
+      where: { id: documentId, deletedAt: null, kind: { notIn: [...NOT_A_FILE] } },
       select: {
         id: true,
         clientId: true,
@@ -578,7 +590,7 @@ export async function requestDocumentSignoff(
 export type DocumentListItem = {
   id: string;
   name: string;
-  /** GENERAL, DELIVERABLE, REPORT or EXPORT — the table marks a deliverable. */
+  /** GENERAL or DELIVERABLE in practice — `listDocuments` never lists a REPORT or an EXPORT (`NOT_A_FILE`); the table marks a deliverable. */
   kind: "GENERAL" | "DELIVERABLE" | "REPORT" | "EXPORT";
   visibility: Visibility;
   clientId: string | null;
@@ -631,10 +643,10 @@ export async function listDocuments(
           ? { clientId: filter.clientId, projectId: null, ...scope }
           : { OR: [{ clientId: null }, { clientId: { not: null }, ...scope }] };
     const rows = await tx.document.findMany({
-      // Never a client REPORT (slice 115, C91 (b)): reports are listed only
+      // Never a workspace EXPORT (slice 136b, NOT_A_FILE), nor a client REPORT (slice 115, C91 (b)): reports are listed only
       // on the client's Reports tab (`./reports.ts`), so no file appears in
       // two places with two sets of controls.
-      where: { deletedAt: null, kind: { not: "REPORT" }, ...where },
+      where: { deletedAt: null, kind: { notIn: [...NOT_A_FILE] }, ...where },
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { versions: true } },
@@ -737,7 +749,12 @@ export async function getDownloadUrl(
   const target = await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:view");
     const doc = await tx.document.findFirst({
-      where: { id: documentId, deletedAt: null },
+      // Never a workspace EXPORT (slice 136b): its download is Settings →
+      // Export's (`getExportDownloadUrl`), under `tenant:export`. Not found
+      // here, exactly as a missing id — so nothing tells a member without the
+      // code that an export exists. Before, `document:view` and the (empty)
+      // scope below were all it asked.
+      where: { id: documentId, deletedAt: null, kind: { not: "EXPORT" } },
       select: { clientId: true, projectId: true, kind: true },
     });
     if (!doc) deny("NOT_FOUND");
@@ -747,6 +764,35 @@ export async function getDownloadUrl(
     if (doc!.kind === "REPORT") await requireAccess(tx, ctx.tenantId, ctx.actor, "report:view");
     return resolveDownload(tx, documentId);
   });
+  return presignDownload(target);
+}
+
+/**
+ * A workspace EXPORT's download (slice 136b) — Settings → Export's, never
+ * Files': `tenant:export` and NOTHING ELSE. ✦, so a stale second factor steps
+ * up and never lets it through; and `core`, so no module switched off — the
+ * documents module included — can stand between an owner and the continuity
+ * export (the 136b review's L3). Asked before the row is read, so a member
+ * without the code learns nothing of which ids are exports.
+ */
+export async function getExportDownloadUrl(
+  ctx: DocumentCtx,
+  documentId: string,
+): Promise<{ url: string; filename: string }> {
+  const target = await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
+    await requireAccess(tx, ctx.tenantId, ctx.actor, "tenant:export");
+    const doc = await tx.document.findFirst({
+      where: { id: documentId, kind: "EXPORT", deletedAt: null },
+      select: { id: true },
+    });
+    if (!doc) deny("NOT_FOUND");
+    return resolveDownload(tx, documentId);
+  });
+  return presignDownload(target);
+}
+
+/** Short-lived, attachment-only, off-origin (§5) — both downloads' last step. */
+async function presignDownload(target: { key: string; filename: string; contentType: string }): Promise<{ url: string; filename: string }> {
   const url = await getStorage().presignGet(target.key, {
     expiresSec: GET_EXPIRES_SEC,
     responseContentDisposition: attachmentDisposition(target.filename),
@@ -767,8 +813,9 @@ export async function renameDocument(
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:edit");
     const doc = await tx.document.findFirst({
-      // Never a client REPORT (slice 115): its name is `editReport`'s.
-      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
+      // Never a client REPORT (slice 115: its name is `editReport`'s) nor a
+      // workspace EXPORT (slice 136b) — `NOT_A_FILE`.
+      where: { id: documentId, deletedAt: null, kind: { notIn: [...NOT_A_FILE] } },
       select: { id: true, name: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");
@@ -813,10 +860,10 @@ async function changeVisibilityOnce(
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:change_visibility");
     const doc = await tx.document.findFirst({
-      // Never a client REPORT (slice 115): a report is published and hidden
+      // Never a workspace EXPORT (slice 136b, NOT_A_FILE), nor a client REPORT (slice 115): a report is published and hidden
       // only by `./reports.ts`, the one writer that stamps
       // `report_published_at` and tells the client's people.
-      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
+      where: { id: documentId, deletedAt: null, kind: { notIn: [...NOT_A_FILE] } },
       select: {
         id: true,
         clientId: true,
@@ -858,9 +905,9 @@ export async function softDeleteDocument(ctx: DocumentCtx, documentId: string): 
   await withTenant(ctx.tenantId, memberPrincipal(ctx), async (tx) => {
     await requireAccess(tx, ctx.tenantId, ctx.actor, "document:delete");
     const doc = await tx.document.findFirst({
-      // Never a client REPORT (slice 115): deleting one asks `report:delete`
+      // Never a workspace EXPORT (slice 136b, NOT_A_FILE), nor a client REPORT (slice 115): deleting one asks `report:delete`
       // as well — `deleteReport` in `./reports.ts`.
-      where: { id: documentId, deletedAt: null, kind: { not: "REPORT" } },
+      where: { id: documentId, deletedAt: null, kind: { notIn: [...NOT_A_FILE] } },
       select: { id: true, clientId: true, projectId: true },
     });
     if (!doc) deny("NOT_FOUND");

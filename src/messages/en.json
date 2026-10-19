@@ -1118,7 +1118,7 @@
       "noPermission": "You do not have permission to view exports.",
       "previous": "Previous exports",
       "emptyTitle": "No exports yet",
-      "emptyDescription": "Generate one above; each export appears here and under Files.",
+      "emptyDescription": "Generate one above; each export appears here, for whoever can generate one.",
       "columns": {
         "name": "Name",
         "created": "Created",
@@ -1127,7 +1127,10 @@
       "description": "Take the whole workspace with you, whenever you want it.",
       "commitmentTitle": "Your data is yours",
       "generatingHint": "Building the archive. This can take a minute on a large workspace — you can leave the page.",
-      "commitmentBody": "Everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment."
+      "commitmentBody": "Everything this workspace holds can be exported at any time as an open, documented archive — that is our continuity commitment.",
+      "previousNeedsPermission": "Only someone who can generate an export can see the exports made or download them: an export holds the whole workspace's data.",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {name}? It leaves this list and can no longer be downloaded. Nothing in the workspace changes."
     },
     "rates": {
       "title": "Rates",

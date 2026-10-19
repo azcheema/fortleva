@@ -126,7 +126,7 @@ Seeding column: **C** = CEO (owner-equivalent), **M** = Manager, **A** = Admin, 
 | `settings:edit` | core | Edit tenant profile, branding, locale *(and, since Phase 5 slice 105 — founder decision C73 (c) — the workspace's progress-update LAYOUTS on `/settings/updates`: create, edit, delete, choose the default; `settings:view` lists them. A project's own pick is `project:edit` on its Overview, and its page reads the layouts' names under `project:view`)* | C A | — | v1 |
 | `settings:manage_modules` | core | Toggle `TenantPreference` module switches ✦ | C | — | v1 |
 | `audit:view` | core | View the tenant's own audit log | C A | — | v1 |
-| `tenant:export` | core | Full tenant data export ✦ | C | — | v1 (Phase 8 for scheduled; ad-hoc earlier) |
+| `tenant:export` | core | Full tenant data export ✦ — and, since slice 136b, SEEING, DOWNLOADING and DELETING the exports made (Settings → Export only). Seeing the list asks `settings:view` too and holding the code is enough; the download and the delete step up and ask no other code, so no module switched off blocks the continuity export | C | — | v1 (Phase 8 for scheduled; ad-hoc earlier) |
 
 ✦ = `requiresMfa` (see §7.5). **63 codes** *(erratum fixed 2026-08-08: prose previously said 64; the table above is normative and has always held 63 rows — verified mechanically at implementation time, and the CI catalog test asserts 63 — **at TEMPLATE_VERSION 1; from 2W the count grows per phase, see the running-count paragraph below**)*. `audit:view` and `tenant:export` sit outside the brief's enumerated module list but are required by §9 (tenant-facing audit log, export paths); they are `core`.
 

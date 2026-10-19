@@ -3,7 +3,7 @@ import { DownloadIcon, FileArchiveIcon } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 
-import { effectivePermissions } from "@/authz/authorize";
+import { resolvePermissions } from "@/authz/authorize";
 import { AuthzError } from "@/authz/errors";
 import {
   Callout,
@@ -11,6 +11,7 @@ import {
   EmptyState,
   Page,
   PageHeader,
+  RowActions,
   SectionCard,
 } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import { listExports, type ExportListItem } from "@/export/service";
 import { bytesParts } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 
-import { downloadAction } from "../../files/actions";
+import { deleteExportAction, downloadExportAction } from "./actions";
 import { GenerateExportForm } from "./generate-export-form";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -42,9 +43,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * words under the title. It is NOT a Callout: a tinted block is a
  * notice about something unexpected, and it outweighed the action it
  * introduced — the loudest thing on the page was a sentence, and the
- * button that does the work was quieter than it. settings:view lists
- * previous exports; tenant:export (✦) generates a new one; downloads go
- * through the ordinary presigned document path (document:view).
+ * button that does the work was quieter than it. settings:view opens the
+ * page; tenant:export (✦) generates an export and — since slice 136b — lists,
+ * downloads and deletes the ones made (an export is the whole workspace's
+ * data; Files no longer shows one to anybody).
  */
 export default async function ExportPage({
   searchParams,
@@ -58,11 +60,30 @@ export default async function ExportPage({
   const format = await getFormatter();
   const locale = await getLocale();
 
+  // Held, a second factor stale or not: a ✦ control is OFFERED to a holder
+  // and steps up on use (AUTHZ.md §7.5) — the button, and the downloads.
+  const perms = await withTenant(
+    membership.tenantId,
+    { type: "member", id: membership.memberId },
+    (tx) => resolvePermissions(tx, actor, ["settings:view", "tenant:export"]),
+  );
+  const holds = (code: string) => perms.allowed.has(code) || perms.afterStepUp.has(code);
+  // Only whoever may MAKE an export sees the ones made, or downloads one
+  // (slice 136b): an export is the whole workspace's data. A manager or an
+  // admin keeps the page — what an export is and who can make one — without
+  // the list.
+  const canExport = holds("tenant:export");
+
   let exports: ExportListItem[] | null = null;
-  try {
-    exports = await listExports({ tenantId: membership.tenantId, actor });
-  } catch (e) {
-    if (!(e instanceof AuthzError)) throw e;
+  if (holds("settings:view")) {
+    if (!canExport) exports = [];
+    else {
+      try {
+        exports = await listExports({ tenantId: membership.tenantId, actor });
+      } catch (e) {
+        if (!(e instanceof AuthzError)) throw e;
+      }
+    }
   }
   if (!exports) {
     return (
@@ -80,15 +101,6 @@ export default async function ExportPage({
       </Page>
     );
   }
-
-  const held = await withTenant(
-    membership.tenantId,
-    { type: "member", id: membership.memberId },
-    (tx) => effectivePermissions(tx, actor.memberId),
-  );
-  // ✦ code: the button shows for holders; a stale factor becomes step-up on click.
-  const canExport = held.has("tenant:export");
-  const canDownload = held.has("document:view");
 
   return (
     <Page width="form">
@@ -122,23 +134,23 @@ export default async function ExportPage({
 
         <SectionCard
           title={t("previous")}
-          contentClassName={exports.length === 0 ? undefined : "p-0"}
+          contentClassName={!canExport || exports.length === 0 ? undefined : "p-0"}
         >
-          {exports.length === 0 ? (
+          {!canExport ? (
+            <EmptyState variant="forbidden" title={tCommon("forbiddenTitle")} body={t("previousNeedsPermission")} />
+          ) : exports.length === 0 ? (
             <EmptyState
               variant="empty"
               icon={DownloadIcon}
               title={t("emptyTitle")}
               body={t("emptyDescription")}
               action={
-                canExport ? (
-                  <Button asChild size="sm">
-                    <Link href="#new-export">
-                      <FileArchiveIcon />
-                      {t("generate")}
-                    </Link>
-                  </Button>
-                ) : null
+                <Button asChild size="sm">
+                  <Link href="#new-export">
+                    <FileArchiveIcon />
+                    {t("generate")}
+                  </Link>
+                </Button>
               }
             />
           ) : (
@@ -186,12 +198,23 @@ export default async function ExportPage({
                           <span className="ml-1 text-muted-foreground">{size.unit}</span>
                         </TableCell>
                         <TableCell pinned className="text-right">
-                          {canDownload ? (
+                          <RowActions
+                            label={tCommon("actionsFor", { name: e.name })}
+                            items={[
+                              {
+                                key: "delete",
+                                label: t("delete"),
+                                tone: "danger",
+                                confirm: t("deleteConfirm", { name: e.name }),
+                                formAction: deleteExportAction,
+                                hidden: [{ name: "documentId", value: e.documentId }],
+                              },
+                            ]}
+                            primary={
                             // The row's one everyday verb: a quiet 28px ghost
                             // icon, the same shape the documents table uses.
-                            <form action={downloadAction} className="flex justify-end">
+                            <form action={downloadExportAction} className="flex justify-end">
                               <input type="hidden" name="documentId" value={e.documentId} />
-                              <input type="hidden" name="returnTo" value="/settings/export" />
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
@@ -208,7 +231,8 @@ export default async function ExportPage({
                                 </TooltipContent>
                               </Tooltip>
                             </form>
-                          ) : null}
+                            }
+                          />
                         </TableCell>
                       </TableRow>
                     );
