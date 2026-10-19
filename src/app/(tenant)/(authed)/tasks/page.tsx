@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { requireTenantContext } from "@/members/tenant-context";
 import { followMovedKey, listAllTasks, resolveRowState } from "@/modules/work";
+import { readOpenSavedView } from "@/modules/work/saved-views";
 import { readPreferences } from "@/preferences/service";
 import { getProjectByKey, type ProjectDetail } from "@/projects/service";
 
@@ -68,8 +69,9 @@ type Row = {
  * backlog's peek, over this page, so the place and the filters are kept.
  *
  * The parameters are read strictly (`parseTaskListParams`), and every link is
- * built from the APPLIED values — a project key or a person outside the
- * member's scope was no filter, and is not carried on. Every word and date is
+ * built from the APPLIED values — a project key or a person the list cannot
+ * show is KEPT and matches nothing (slice 136: a saved view must never open as
+ * everyone's tasks), its picker naming it as gone. Every word and date is
  * formatted here, on the server, in UTC (a due date is a `@db.Date`): no label
  * can differ between Node's and the browser's ICU on hydration. "Today" is the
  * member's day (`resolveTimeZone`); "this week" is the workspace's
@@ -116,10 +118,17 @@ export default async function TasksPage({
     );
   }
 
+  // The saved view the address names (slice 136, C113 (d)) — the reader's own
+  // view of this page, or none; a stale or someone else's id is dropped from
+  // every link below.
+  const openView = await readOpenSavedView(ctx, params.view, { kind: "TASKS", projectId: null });
+
   // ── the task beside the list (C107 (b)) — the backlog page's loads ──
   // A task that cannot be opened is no peek, silently: a project out of
   // scope, a missing one and a missing number all look the same.
-  const peekHref = params.item ? tasksHref({ ...params, project: read.projectKey, person: read.person }) : null;
+  const peekHref = params.item
+    ? tasksHref({ ...params, project: read.projectKey, person: read.person, view: openView?.id ?? null })
+    : null;
   let peekProject: ProjectDetail | null = null;
   if (params.item && peekHref) {
     try {
@@ -129,7 +138,13 @@ export default async function TasksPage({
       if (!(e instanceof AuthzError)) throw e;
     }
   }
-  const listBase: TaskListParams = { ...params, project: read.projectKey, person: read.person, item: null };
+  const listBase: TaskListParams = {
+    ...params,
+    project: read.projectKey,
+    person: read.person,
+    item: null,
+    view: openView?.id ?? null,
+  };
   const listHref = tasksHref(listBase);
   const peekItem =
     peekProject && params.item
@@ -205,7 +220,15 @@ export default async function TasksPage({
 
       <div className="mt-6">
         <SectionCard contentClassName="p-0">
-          <TaskFilterBar applied={applied} projects={read.projects} people={people} />
+          <TaskFilterBar
+            applied={applied}
+            projects={read.projects}
+            people={people}
+            openView={openView}
+            selfId={actor.memberId}
+            projectKnown={read.projectKnown}
+            personKnown={read.personKnown}
+          />
           {read.truncated ? (
             <p className="border-b border-border px-4 py-2 text-sm text-muted-foreground" data-testid="tasks-truncated">
               {t("truncated", { count: TASK_LIST_CAP })}
@@ -219,7 +242,7 @@ export default async function TasksPage({
                 body={t("emptyFiltered.body")}
                 action={
                   <Button asChild size="sm" variant="outline">
-                    <Link href={tasksHref({ due: null, person: null, project: null, group: applied.group, item: null })} data-testid="tasks-clear-filters">
+                    <Link href={tasksHref({ due: null, person: null, project: null, group: applied.group, item: null, view: applied.view })} data-testid="tasks-clear-filters">
                       {t("clearFilters")}
                     </Link>
                   </Button>

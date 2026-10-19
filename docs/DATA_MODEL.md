@@ -30,7 +30,7 @@ Supporting models (this doc's additions, still canonical): `Session, Account, Ve
 
 **Amended 2026-08-16 (work-management plan).** Added canonical names, by module:
 
-- **Work** (`work`, Phase 2W — §6.14): `WorkItem` (**UI word: "Task"**; levels Epic / Task / Subtask via `WorkItem.type`), `WorkflowState`, `WorkflowPreset`, `WorkItemActivity`, `Comment` (polymorphic; **replaces `IssueComment`**), `Mention`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `ProjectTemplate`, `WorkItemRepeat` + `WorkItemRepeatItem` *(slice 127 — repeating tasks, §6.14's note)*, `WorkItemAlias` *(slice 131 — a moved task's old key, §6.14's note)*.
+- **Work** (`work`, Phase 2W — §6.14): `WorkItem` (**UI word: "Task"**; levels Epic / Task / Subtask via `WorkItem.type`), `WorkflowState`, `WorkflowPreset`, `WorkItemActivity`, `Comment` (polymorphic; **replaces `IssueComment`**), `Mention`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `ProjectTemplate`, `WorkItemRepeat` + `WorkItemRepeatItem` *(slice 127 — repeating tasks, §6.14's note)*, `WorkItemAlias` *(slice 131 — a moved task's old key, §6.14's note)*, `SavedView` *(slice 136 — a member's own named filters, §6.14's note)*.
 - **Time** (`time`, Phase 2T — §6.15): `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `ProjectTimeSummary`, `StaffNotice`, `StaffNoticeAcknowledgment`, `Shift`, `ShiftBreak`, `TimeReport`, `WorkType` *(last four added 2026-08-20 — founder time-tracking extensions)*; Phase 4: `RoundingRule`, `InvoiceLineTimeEntry`, `RetainerPlan`, `RetainerPeriod`, `HourBankTransaction`.
 - **Progress updates** (rides on `work`, Phase 3 — §6.16): `ProjectUpdate`, `ProjectUpdateInternalSnapshot`; Phase 5: `ProjectUpdateSchedule`, `ProjectUpdateTemplate`.
 - **Vault & assets** (`vault`, Phase 3V — §6.17): `TenantKey` (Phase 1b, core), `CredentialItem`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ClientAsset`, `ExpirationReminderSent`; later: `AssetCheck`.
@@ -92,7 +92,7 @@ Full enforcement design lives in `TENANCY.md`; the schema commitments are:
 
 | Registry subclass (`src/db/model-registry.ts`) | Class | Required columns / policy | Models |
 |---|---|---|---|
-| `principalScoped` | A | `portal_deny`; **never a `visibility` column** — a class-A table carrying one is a posture-test failure (it invites a later "just gate it" shortcut). | all class-A models above + `WorkflowState`, `WorkflowPreset`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `Mention`, `ProjectTemplate`, `WorkItemRepeat`, `WorkItemRepeatItem`, `WorkItemAlias`, `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `StaffNotice`, `StaffNoticeAcknowledgment`, `RoundingRule`, `ProjectUpdateInternalSnapshot`, `TenantKey`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ExpirationReminderSent`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `PushSubscription` |
+| `principalScoped` | A | `portal_deny`; **never a `visibility` column** — a class-A table carrying one is a posture-test failure (it invites a later "just gate it" shortcut). | all class-A models above + `WorkflowState`, `WorkflowPreset`, `Label`, `WorkItemLabel`, `WorkItemCollaborator`, `WorkItemSubscriber`, `Mention`, `ProjectTemplate`, `WorkItemRepeat`, `WorkItemRepeatItem`, `WorkItemAlias`, `TimeEntry`, `RateCard`, `ProjectBudget`, `BudgetAlert`, `StaffNotice`, `StaffNoticeAcknowledgment`, `RoundingRule`, `ProjectUpdateInternalSnapshot`, `TenantKey`, `CredentialSecret`, `CredentialVersion`, `CredentialAccessGrant`, `CredentialShareLink`, `ExpirationReminderSent`, `Subscription`, `NotificationPreference`, `EmailOutbox`, `PushSubscription`, `SavedView` |
 | `clientScoped` | B | `client_id`, `visibility`, RESTRICTIVE `portal_gate` in the two-term form `client_id = app.client_id AND visibility = 'CLIENT_VISIBLE'`. | `Client`, `Contact` (structural — client match only), `Document` without `projectId`, `Contract`, `ContractSignature`, `Invoice`, `InvoiceLine`, ~~`PerformanceReport`~~ *(slice 118: `WebsiteSpeedWeek` is projectScoped, below)*, `ContinuityBox`, `ContinuityOpenRequest`, `CredentialItem`, `ClientAsset` |
 | `projectScoped` | B | `client_id`, `visibility`, **`portal_enabled boolean NOT NULL DEFAULT false`** (denormalised from `Project.portalEnabled`, maintained by an `AFTER UPDATE OF portal_enabled ON project` trigger fanning out to every projectScoped table in the same transaction, and set on INSERT by a BEFORE trigger reading the parent project — *since slice 74, 2026-09-28, that trigger only TRIES the project's switch gate and writes FALSE while a switch is in flight, re-derived at the writer's commit or by the switch's reconcile (TENANCY.md §7.2), so the copy can lag the switch toward FALSE — transiently, except the recorded residuals (the migration header's list: rows left FALSE until the project is next switched) — and never toward TRUE; before it, a row written during a DISABLE kept `true`*), RESTRICTIVE `portal_gate` in the **three-term form** `portal_gate = client_id = app.client_id AND visibility = 'CLIENT_VISIBLE' AND portal_enabled`. | `Project` (its own row: `client_id` + `portal_enabled` — a project row is a structural row, so the visibility term is replaced by `portal_enabled`), `Milestone`, `ProjectVersion`, `Service`, `Document` with `projectId`, `WorkItem`, `WorkItemActivity`, `Comment`, `ProjectUpdate`, `ProjectTimeSummary`, `search_index` rows with `project_id` |
 | (special) | — | `Notification`: contact rows readable/updatable (`read_at`, `archived_at` only) under `receiver_type='CONTACT' AND receiver_id = app.principal_id AND client_id = app.client_id`. | `Notification` |
@@ -3609,6 +3609,24 @@ model Mention {
 /// the board / backlog / Tasks peeks follow it (`followMovedKey`) only for a
 /// reader who can open the task where it is now.
 ///
+/// SavedView (BUILT 2026-10-19, slice 136, founder decision C113 (a)–(d);
+/// migration 20261104090000; design
+/// docs/research/2026-10-19-slice-136-saved-views-design.md). One MEMBER's
+/// named filters of the Tasks page (`kind` TASKS) or of ONE project's backlog
+/// (BACKLOG, `project_id` set — CHECK `saved_view_kind_project`), listed
+/// under Tasks in their left menu. `query` = the list's filters in canonical
+/// form (`src/lib/saved-view-plan.ts`: fixed key order, defaults as no key,
+/// list values sorted, ids lower-cased; CHECK `saved_view_query_ok`:
+/// `[A-Za-z0-9=&,_-]`, ≤ 4000) — "Update view" compares strings. `name` one
+/// line ≤ 60 (CHECK), unique per member ignoring case (`lower(name)`
+/// UNIQUE). At most 30 a member (the service, under an advisory lock). Class
+/// A plus a RESTRICTIVE `own_view` policy: only the member principal, only
+/// its own rows — no colleague, owner or job (not SYSTEM) reads or writes
+/// another's; the export, run as the exporting member, carries only theirs.
+/// Cascades with its member and its project; a backlog view whose project the
+/// member no longer reaches stays theirs, in the menu greyed with no link or key.
+/// Audit rows carry the act and the kind only — never the name, filters or project.
+///
 /// ProjectTemplate — "pick a template" is the ONLY process picker in the
 /// product (UI.md rule 13). Tenant-owned rows only (no nullable tenantId —
 /// keeps RLS and the census clean).
@@ -5403,7 +5421,7 @@ The decisive argument: **the security-relevant dimensions of a file are tenant, 
 | Omission | Verdict | Why |
 |---|---|---|
 | **`ProjectTimeSummary` as a SQL view** | rejected | Under FORCE RLS a view over class-A `time_entry` returns **0 rows to a contact** (the view's underlying tables are policy-checked as the caller); a `SECURITY DEFINER` view or system-principal read in a portal path would violate "portal reads never under a system principal". Hence a physical class-B table recomputed in the entry transaction (§6.15). |
-| **`SavedView` / `Favorite`** | v1.5 | One universal `<WorkItemView>` with URL state (`nuqs`) covers Home/backlog/board/portal list; a table arrives when someone asks to name a view. |
+| **`SavedView` / `Favorite`** | v1.5 — **`SavedView` BUILT in slice 136** (C113: a member's OWN named filters of the Tasks page or a backlog, §6.14's note); `Favorite` and shared views still not | One universal `<WorkItemView>` with URL state (`nuqs`) covers Home/backlog/board/portal list; a table arrives when someone asks to name a view — the founder did, 2026-10-19. |
 | **`Reaction`** | v1.5 | Comments + mentions first; emoji rows are cheap to add later, and are a leak vector to test in the portal. |
 | **`WorkItemLink` {RELATED, BLOCKS, DUPLICATE_OF}** | v1.5 | `duplicateOfId` on the item covers triage; a general link table (acyclic BLOCKS) waits for a real dependency need. Internal-only when it lands. |
 | **WIP limits enforcement / definition of done** | v1.5 | Columns reserved on `WorkflowState`; soft warnings only in v1. |

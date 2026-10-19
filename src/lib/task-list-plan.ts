@@ -35,6 +35,12 @@ export type TaskListParams = {
   readonly group: TaskGroupBy | null;
   /** The peek: `KEY-N`, as the URL spells it (the key upper-cased). */
   readonly item: { readonly projectKey: string; readonly number: number } | null;
+  /**
+   * The saved view open on the page (slice 136, C113 (d)) — a uuid, carried
+   * through every link so a filter change keeps it and "Update view" can
+   * offer itself. Whether it is the reader's is the page's read to decide.
+   */
+  readonly view: string | null;
 };
 
 /**
@@ -71,6 +77,7 @@ export function parseTaskListParams(params: Readonly<Record<string, string | str
     project: project !== undefined && TASKS_PROJECT_KEY_RE.test(project) ? project : null,
     group: isOneOf(TASK_GROUPS, group) ? group : null,
     item: item && number >= 1 ? { projectKey: item[1]!.toUpperCase(), number } : null,
+    view: UUID.test(one(params["view"]) ?? "") ? one(params["view"])!.toLowerCase() : null,
   };
 }
 
@@ -92,6 +99,7 @@ export function tasksHref(p: TaskListParams): string {
   if (p.project) q.set("project", p.project);
   if (p.group) q.set("group", p.group);
   if (p.item) q.set("item", `${p.item.projectKey}-${p.item.number}`);
+  if (p.view) q.set("view", p.view);
   const s = q.toString();
   return s === "" ? "/tasks" : `/tasks?${s}`;
 }

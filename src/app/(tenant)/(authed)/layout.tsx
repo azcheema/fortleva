@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getLocale } from "next-intl/server";
 
 import { requireMemberSession } from "@/auth/session";
 import { AppShell } from "@/components/shell/app-shell";
@@ -6,7 +7,9 @@ import { PwaRegister } from "@/components/shell/pwa-register";
 import { withTenant } from "@/db";
 import { accessibleCodes } from "@/entitlements/resolver";
 import { getThemePreference } from "@/lib/theme-server";
+import type { SavedViewLink } from "@/lib/saved-view-plan";
 import { getActiveMembership, membershipsFor, mfaStateOf } from "@/members/tenant-context";
+import { listSavedViewLinks } from "@/modules/work/saved-views";
 import { countUnreadIn } from "@/notify/inbox";
 import { serverVapidPublicKey } from "@/push/keys";
 
@@ -53,9 +56,12 @@ export default async function AuthedLayout({ children }: { children: React.React
   let unreadInbox = 0;
   let canCreateTask = false;
   let canShareTask = false;
+  // The member's own saved views, drawn under Tasks (slice 136, C113 (c)).
+  let savedViews: SavedViewLink[] = [];
   if (membership) {
     const actor = { memberId: membership.memberId, mfa: mfaStateOf(session) };
-    const { held, unread } = await withTenant(
+    const locale = await getLocale();
+    const { held, unread, views } = await withTenant(
       membership.tenantId,
       { type: "member", id: membership.memberId },
       async (tx) => {
@@ -81,11 +87,15 @@ export default async function AuthedLayout({ children }: { children: React.React
         // of the module gates.
         const held = await accessibleCodes(tx, membership.tenantId, actor, RAIL_CODES);
         const unread = await countUnreadIn(tx, { tenantId: membership.tenantId, actor });
-        return { held, unread };
+        // In sequence too, and only under the Tasks entry's own code — the
+        // read asks its two codes again itself (`listSavedViewLinks`).
+        const views = held.has("work_item:view") ? await listSavedViewLinks(tx, membership.tenantId, actor, locale) : [];
+        return { held, unread, views };
       },
     );
     nav = visibleNav(NAV, (code) => held.has(code));
     unreadInbox = unread;
+    savedViews = views;
     // The global `C` rides on the SAME read the nav does — one more code
     // in `RAIL_CODES` (`project:view` is a nav code already), no second
     // query. It is not a nav entry, so it is read off `held` here rather
@@ -125,6 +135,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       canCreateTask={canCreateTask}
       canShareTask={canShareTask}
       workspaceCount={workspaceCount}
+      savedViews={savedViews}
     >
       <PwaRegister vapidPublicKey={serverVapidPublicKey()} sessionId={session.session.id} onResume={resumePushDevicesAction} />
       {children}

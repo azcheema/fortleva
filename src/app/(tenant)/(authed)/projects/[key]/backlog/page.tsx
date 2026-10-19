@@ -9,7 +9,9 @@ import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listHrefOf, peekHrefOf } from "@/lib/work-view";
+import { viewParamOf } from "@/lib/saved-view-plan";
 import { followMovedKey, listItems, resolveStateNames } from "@/modules/work";
+import { readOpenSavedView } from "@/modules/work/saved-views";
 import { readPreferences } from "@/preferences/service";
 
 import { loadProject } from "../data";
@@ -96,6 +98,9 @@ export default async function ProjectBacklogPage({
     if (moved) redirect(`/projects/${moved.projectKey}/backlog?item=${moved.projectKey}-${moved.number}`);
   }
   const data = resolveStateNames(rawData, (seedKey) => tStates(seedKey));
+  // The reader's own saved view of this backlog the address names (slice
+  // 136, C113 (d)) — its filters are the shallow params, compared on the client.
+  const openView = await readOpenSavedView(ctx, viewParamOf(query), { kind: "BACKLOG", projectId: project.id });
   let peekDocuments: DocumentListItem[] = [];
   if (peekItem && project.caps.viewDocuments) {
     peekDocuments = await listDocuments(
@@ -150,6 +155,7 @@ export default async function ProjectBacklogPage({
             includeArchived={includeArchived}
             peekOpen={Boolean(peekItem)}
             timer={timer}
+            openView={openView}
           />
         </>
       )}

@@ -111,6 +111,9 @@ export async function setupTenant(label: string) {
     // member delete below would cascade them, but say it rather than rely on
     // the order.
     await platform.pushSubscription.deleteMany({ where: { tenantId } });
+    // Saved views (slice 136) RESTRICT the tenant; their member's and project's
+    // deletes cascade them, but say it here as for the devices.
+    await platform.savedView.deleteMany({ where: { tenantId } });
     await platform.memberInvite.deleteMany({ where: { tenantId } });
     await platform.memberRole.deleteMany({ where: { tenantId } });
     await platform.rolePermission.deleteMany({ where: { tenantId } });

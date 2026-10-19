@@ -56,7 +56,7 @@ Each row is a link that opens the peek (§3.5) and shows:
 - **Overdue** = due before today. **Due this week** = due on any day of the workspace's week containing today — a passed day of it included, drawn overdue. The two are one parameter: choosing one clears the other.
 - **Mine** = assigned to me. **Nobody assigned** = no member and no contact. The person picker sets the same parameter, so Mine, Nobody and a named person are one choice.
 - **The person picker** offers Anyone, Me, Nobody, then every MEMBER assigned to at least one open task in scope, by name. The names come from the tasks the member could already open, so the picker shows no one the list could not. A member id that is not among them is no filter (no oracle). Client contacts are not offered (their tasks show with the contact's name).
-- **The project picker** offers every not-archived project in scope; an unknown or out-of-scope key is no filter (the calendar's rule).
+- **The project picker** offers every not-archived project in scope; an unknown or out-of-scope key is no filter (the calendar's rule). *(Superseded for the Tasks page by slice 136: such a key, or such a member id, matches nothing — saved views.)*
 - The chips are links that toggle; the pickers are the calendar's native select. When the filters leave nothing, the empty state says so with a "Clear filters" link.
 
 ### 3.4 Group by (C107 (c); reading)

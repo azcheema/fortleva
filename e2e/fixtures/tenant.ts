@@ -371,6 +371,11 @@ export async function clearTemplates(tenantId: string): Promise<{ removed: numbe
   return runCli<{ removed: number }>(["clear-templates", tenantId]);
 }
 
+/** Every saved view of a throwaway workspace deleted (slice 136, `saved-views.spec.ts`'s afterAll). */
+export async function clearSavedViews(tenantId: string): Promise<{ removed: number }> {
+  return runCli<{ removed: number }>(["clear-saved-views", tenantId]);
+}
+
 /** The workspace's default stages put back to Fortleva's original set (slice 123, `stages.spec.ts`). */
 export async function resetStagePreset(tenantId: string): Promise<{ removed: number }> {
   return runCli<{ removed: number }>(["reset-stage-preset", tenantId]);

@@ -26,9 +26,14 @@ import { principalOf, type WorkCtx } from "./states";
  *
  * THE FILTERS narrow that set and are found in the same scope: a project key
  * among the projects in scope, a member among the people assigned to the open
- * tasks in scope. Anything else is no filter at all, never an error — the
- * page must not tell a member that a project, or a person's tasks, exist
- * beyond their reach.
+ * tasks in scope. Anything else MATCHES NOTHING — an empty list, never an
+ * error, and never the whole list (slice 136, the code review's M1: a SAVED
+ * VIEW of a person who has since finished their tasks, or of a project since
+ * archived, must not show everyone's tasks under its name). Empty says
+ * nothing: the list is the member's scope either way, so a project or person
+ * beyond their reach and one that does not exist answer alike. The read says
+ * which filters it could not find (`projectKnown`, `personKnown`), so the
+ * pickers can name them as gone.
  *
  * THE PEOPLE the person picker offers are the members assigned to at least
  * one open task in scope — read from those tasks, so the picker names no one
@@ -66,10 +71,14 @@ export type TaskListRead = {
   readonly projects: readonly { readonly key: string; readonly name: string }[];
   /** The members assigned to at least one open task in scope, in no order (the page sorts them) — the person picker. */
   readonly people: readonly { readonly id: string; readonly name: string }[];
-  /** The project filter as applied: the key when it named a project in scope, else null. */
+  /** The project filter as asked — kept even when it names no project in scope (it then matches nothing). */
   readonly projectKey: string | null;
-  /** The person filter as applied: a member id is kept only when it is among `people`. */
+  /** False when `projectKey` names no project in `projects`. */
+  readonly projectKnown: boolean;
+  /** The person filter as asked — a member id is kept even when not among `people` (it then matches nothing). */
   readonly person: TaskPersonFilter | null;
+  /** False when `person` names a member not among `people`. */
+  readonly personKnown: boolean;
 };
 
 export async function listAllTasks(
@@ -96,8 +105,9 @@ export async function listAllTasks(
       select: { id: true, key: true, name: true },
       orderBy: [{ name: "asc" }, { key: "asc" }],
     });
-    // The filter, found among the projects in scope — or no filter at all.
+    // The filter, found among the projects in scope — else it matches nothing.
     const filtered = opts.projectKey === null ? null : (projects.find((p) => p.key === opts.projectKey) ?? null);
+    const projectWhere = filtered ? { projectId: filtered.id } : opts.projectKey !== null ? { projectId: { in: [] as string[] } } : {};
 
     const scope = await scopeWhere(tx, ctx.actor, { clientField: "clientId", projectField: "projectId" });
     const open = {
@@ -126,9 +136,10 @@ export async function listAllTasks(
     // In no particular order: the page sorts them with the reader's collator.
     const people = members.map((m) => ({ id: m.id, name: m.user.name }));
 
-    const asked = opts.person;
-    const person: TaskPersonFilter | null =
-      asked?.kind === "member" ? (people.some((p) => p.id === asked.id) ? asked : null) : asked;
+    // Kept as asked: a member not among `people` holds no open task in scope,
+    // so the filter below matches nothing — which is the answer.
+    const person = opts.person;
+    const personKnown = person?.kind !== "member" || people.some((p) => p.id === person.id);
 
     const due = opts.due
       ? "before" in opts.due
@@ -146,7 +157,7 @@ export async function listAllTasks(
 
     const rows = await tx.workItem.findMany({
       where: {
-        AND: [scope, { ...open, ...(filtered ? { projectId: filtered.id } : {}), ...due, ...who }],
+        AND: [scope, { ...open, ...projectWhere, ...due, ...who }],
       },
       orderBy: [
         { targetDate: { sort: "asc", nulls: "last" } },
@@ -196,8 +207,10 @@ export async function listAllTasks(
       truncated: rows.length > TASK_LIST_CAP,
       projects: projects.map((p) => ({ key: p.key, name: p.name })),
       people,
-      projectKey: filtered?.key ?? null,
+      projectKey: opts.projectKey,
+      projectKnown: opts.projectKey === null || filtered !== null,
       person,
+      personKnown,
     };
   });
 }

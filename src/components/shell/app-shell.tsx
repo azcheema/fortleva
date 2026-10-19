@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFocusReturn } from "@/components/ui/use-focus-return";
+import type { SavedViewLink } from "@/lib/saved-view-plan";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ import { CommandPalette, flatNav } from "./command-palette";
 import { NavIcon } from "./nav-icon";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { QuickCreate } from "./quick-create";
+import { SavedViewsNav } from "./saved-views-nav";
 import { StopConfirm } from "./stop-confirm";
 import { WorkspaceWatch } from "./workspace-watch";
 import { TimerPillSlot } from "./timer-pill-slot";
@@ -116,6 +118,7 @@ export function AppShell({
   timer,
   unreadInbox,
   workspaceCount,
+  savedViews,
   children,
 }: {
   nav: readonly NavEntry[];
@@ -181,6 +184,13 @@ export function AppShell({
    * shows a SUSPENDED membership's status.
    */
   workspaceCount: number;
+  /**
+   * The member's own saved views (slice 136, C113), drawn under Tasks —
+   * REQUIRED (`[]` = none), for the reason `unreadInbox` is: state a shared
+   * component must reflect is a prop, never a default, or a new layout
+   * silently loses the menu's views.
+   */
+  savedViews: readonly SavedViewLink[];
   children: React.ReactNode;
 }) {
   const t = useTranslations("nav");
@@ -326,6 +336,7 @@ export function AppShell({
             {entry.children.map((c) => railLink(c, depth + 1))}
           </ul>
         ) : null}
+        {entry.id === "tasks" && !collapsed ? <SavedViewsNav views={savedViews} variant="rail" /> : null}
       </li>
     );
   };
@@ -358,6 +369,9 @@ export function AppShell({
       </Link>
       {entry.children ? (
         <ul className="flex flex-col gap-0.5">{entry.children.map((c) => sheetLink(c, depth + 1))}</ul>
+      ) : null}
+      {entry.id === "tasks" ? (
+        <SavedViewsNav views={savedViews} variant="sheet" onNavigate={() => setSheetOpen(false)} />
       ) : null}
     </li>
   );

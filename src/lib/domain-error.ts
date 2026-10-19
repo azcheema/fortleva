@@ -303,6 +303,10 @@ export type DomainErrorCode =
   // Slice 132 (C109): a table in a description or an update section past
   // `table-bounds.ts` (20 columns, 500 rows — spans carried down counted).
   | "TABLE_TOO_LARGE"
+  // Saved views (slice 136 — src/modules/work/saved-views.ts, C113).
+  | "VIEW_NAME_TAKEN" // another of the member's own views has that name, ignoring case (Postgres's fold)
+  | "VIEW_LIMIT" // the member already keeps SAVED_VIEW_MAX views
+  | "VIEW_FILTERS_INVALID" // a filter a view cannot keep (not an id, a list past 50) — the page's own controls never make one
   // The workspace's reply address (Phase 5 slice 100 — src/notify/reply-address.ts).
   | "REPLY_ADDRESS_INVALID" // not an address, or one on the domain Fortleva sends from (it receives nothing)
   | "REPLY_ADDRESS_UNCHANGED" // already the confirmed address

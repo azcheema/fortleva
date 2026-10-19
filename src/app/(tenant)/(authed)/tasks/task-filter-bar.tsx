@@ -7,6 +7,8 @@ import { useOptimistic, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { SavedViewControls, type OpenView } from "@/components/work-view/saved-view-controls";
+import { canonicalTasksQuery, searchOf } from "@/lib/saved-view-plan";
 import { tasksHref, type TaskListParams, type TaskPersonFilter } from "@/lib/task-list-plan";
 
 /**
@@ -17,23 +19,44 @@ import { tasksHref, type TaskListParams, type TaskPersonFilter } from "@/lib/tas
  * The parameters are the server's PARSED ones (`applied`), never the raw URL,
  * and every change navigates to `tasksHref` of them with the peek closed — the
  * server reads each against the member's own scope, so a key or a person typed
- * into the URL is no filter unless it names one they reach. The pressed state
+ * into the URL matches nothing unless it names one they reach (slice 136; it
+ * was no filter before), and its picker names it as gone. The pressed state
  * moves at once (`useOptimistic` inside the transition), so a slow page never
  * looks like a toggle that did not take.
  *
  * Overdue and Due this week are one parameter, as are Mine, Nobody and the
  * person picker: choosing one replaces the other.
+ *
+ * Saved views (slice 136, C113): "Save view" / "Update view" at the end of the
+ * pickers' row, comparing the filters SHOWN (the optimistic ones) with the
+ * open view's — so the button answers the press, not the round trip.
  */
 export function TaskFilterBar({
   applied,
   projects,
   people,
+  openView,
+  selfId,
+  projectKnown,
+  personKnown,
 }: {
   applied: TaskListParams;
   /** Every project in scope, by name; the picker is drawn only when there are two or more. */
   projects: readonly { readonly key: string; readonly name: string }[];
   /** The OTHER members assigned to open tasks in scope — "Me" is its own option. */
   people: readonly { readonly id: string; readonly name: string }[];
+  /** The reader's own saved view the address names, or null — REQUIRED. */
+  openView: OpenView | null;
+  /** The reader's member id: their own id as a person filter is "Me" in a view. */
+  selfId: string;
+  /**
+   * False when the APPLIED project / person names none the list can show —
+   * an archived project, someone with no open task here (slice 136: kept as
+   * a filter that matches nothing). The picker then offers it as gone, so
+   * its value is never silently another.
+   */
+  projectKnown: boolean;
+  personKnown: boolean;
 }) {
   const t = useTranslations("tasks");
   const router = useRouter();
@@ -47,6 +70,8 @@ export function TaskFilterBar({
       router.push(tasksHref(next), { scroll: false });
     });
   };
+
+  const currentQuery = canonicalTasksQuery(searchOf(tasksHref(shown).split("?")[1] ?? ""), selfId);
 
   const personValue = shown.person === null ? "" : shown.person.kind === "member" ? shown.person.id : shown.person.kind;
   const personOf = (value: string): TaskPersonFilter | null =>
@@ -77,7 +102,7 @@ export function TaskFilterBar({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {projects.length > 1 ? (
+        {projects.length > 1 || (!projectKnown && applied.project !== null) ? (
           <div className="flex min-w-0 items-center gap-2">
             <Label htmlFor="tasks-project" className="text-sm text-muted-foreground">
               {t("projectFilter")}
@@ -90,6 +115,7 @@ export function TaskFilterBar({
               data-testid="tasks-project-filter"
             >
               <option value="">{t("allProjects")}</option>
+              {!projectKnown && applied.project !== null ? <option value={applied.project}>{t("projectGone")}</option> : null}
               {projects.map((p) => (
                 <option key={p.key} value={p.key}>
                   {p.name}
@@ -112,6 +138,7 @@ export function TaskFilterBar({
             <option value="">{t("anyone")}</option>
             <option value="me">{t("me")}</option>
             <option value="none">{t("nobody")}</option>
+            {!personKnown && applied.person?.kind === "member" ? <option value={applied.person.id}>{t("personGone")}</option> : null}
             {people.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -134,6 +161,16 @@ export function TaskFilterBar({
             <option value="project">{t("groupProject")}</option>
             <option value="person">{t("groupPerson")}</option>
           </NativeSelect>
+        </div>
+        <div className="min-w-0 sm:ml-auto">
+          <SavedViewControls
+            kind="TASKS"
+            projectId={null}
+            currentQuery={currentQuery}
+            openView={openView}
+            // The filters SHOWN — a press still navigating included.
+            openHref={(id) => tasksHref({ ...shown, item: null, view: id })}
+          />
         </div>
       </div>
     </div>

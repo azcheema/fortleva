@@ -120,6 +120,22 @@ export function leavingDialogReturn(from: Element): { returnsTo: HTMLElement | n
 export const isReturningFocus = (): boolean => returning;
 
 /**
+ * Put focus on `el` AS a return — so a `TooltipTrigger` there keeps its
+ * tooltip shut (`isReturningFocus`). For a caller of this hook that places
+ * focus itself in `onCloseAutoFocus` because the origin is about to leave
+ * (slice 136: a deleted saved view's own menu button hands focus to the
+ * Tasks entry, which wears a tooltip in the rail).
+ */
+export function returnFocusTo(el: HTMLElement): void {
+  returning = true;
+  try {
+    el.focus({ preventScroll: true });
+  } finally {
+    returning = false;
+  }
+}
+
+/**
  * FOCUS GOES BACK WHERE IT CAME FROM, for a Radix dialog that nothing
  * opens from a trigger: the ⌘K palette and MovePicker (`CommandDialog`),
  * the `?` overlay, and the shell's More sheet. On close Radix calls

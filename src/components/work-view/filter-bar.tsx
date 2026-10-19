@@ -17,17 +17,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PRIORITIES, STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
+import { backlogScreenQuery } from "@/lib/saved-view-plan";
 import {
   GROUP_BYS,
   UNASSIGNED,
   WITH_CLIENT,
   activeFilterCount,
+  workViewHref,
   workViewParsers,
   type GroupBy,
   type Rollup,
   type WorkMember,
   type WorkState,
 } from "@/lib/work-view";
+
+import { SavedViewControls, type OpenView } from "./saved-view-controls";
 
 /**
  * The work view's filter chips (UI.md §5.3: "Filter chips are ALWAYS
@@ -80,6 +84,13 @@ export type FilterBarProps = {
   rollup: Rollup;
   /** Grouping is offered only where the surface can render groups. */
   groupings?: readonly GroupBy[];
+  /**
+   * Saved views (slice 136, C113 (b)) — REQUIRED, `null` where the surface
+   * offers none: the project the view would be of, and the reader's own view
+   * the address names (or null). "Save view" / "Update view" sit before the
+   * count and compare the filters on screen with the open view's.
+   */
+  savedView: { readonly projectId: string; readonly openView: OpenView | null } | null;
 };
 
 export function WorkFilterBar({
@@ -88,6 +99,7 @@ export function WorkFilterBar({
   hasClientWork,
   rollup,
   groupings = GROUP_BYS,
+  savedView,
 }: FilterBarProps) {
   const t = useTranslations("projects.workView");
   const tPriority = useTranslations("states.priority");
@@ -268,6 +280,20 @@ export function WorkFilterBar({
           <FilterXIcon aria-hidden="true" />
           {t("filters.clear", { count: active })}
         </Button>
+      ) : null}
+
+      {savedView ? (
+        <SavedViewControls
+          kind="BACKLOG"
+          projectId={savedView.projectId}
+          currentQuery={backlogScreenQuery(params)}
+          openView={savedView.openView}
+          // The live address as it is — nuqs writes it straight to history, so
+          // the window's is current; "show archived" and the peek stay.
+          openHref={(id) =>
+            workViewHref(window.location.pathname, new URLSearchParams(window.location.search), { view: id, error: null })
+          }
+        />
       ) : null}
 
       {/* The count is a live region, not decoration: filtering is the one

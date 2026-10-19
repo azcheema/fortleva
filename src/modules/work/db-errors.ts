@@ -120,6 +120,11 @@ const WORK_TOKENS: DbErrorTokens = [
   ["project_template_counts_range", "TEMPLATE_TOO_LARGE"],
   ["project_update_template_one_default", "LAYOUT_BUSY"],
   ["project_tenant_id_update_template_id_fkey", "LAYOUT_BUSY"],
+  // Slice 136 (saved-views.ts): the member's own view names, ignoring case —
+  // the service asks first under the member's lock, so this is a race's
+  // belt; and the canonical query's outline, which the service builds itself.
+  ["saved_view_name_ci_key", "VIEW_NAME_TAKEN"],
+  ["saved_view_query_ok", "VIEW_FILTERS_INVALID"],
 ];
 
 export const { mapDbError, guarded } = dbErrorMapper(WORK_TOKENS);

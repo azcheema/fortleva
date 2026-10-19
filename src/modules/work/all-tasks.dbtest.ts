@@ -200,6 +200,8 @@ afterAll(async () => {
 const strip = (title: string) => title.replace(` ${run}`, "");
 const titles = (r: Awaited<ReturnType<typeof read>>) => (r?.entries ?? []).map((e) => strip(e.title));
 const sorted = (r: Awaited<ReturnType<typeof read>>) => titles(r).sort();
+/** `people` comes back "in no order" — compared by id. */
+const byId = (r: Awaited<ReturnType<typeof read>>) => [...(r?.people ?? [])].sort((a, b) => (a.id < b.id ? -1 : 1));
 
 const OPEN_FOR_OWNER = [
   "Beta's",
@@ -268,12 +270,14 @@ describe("listAllTasks — the filters", () => {
     expect(titles(await read(f.seats.owner.actor, { person: { kind: "me" } }))).toEqual(["Friday this week"]);
     const r = await read(f.seats.owner.actor, { person: { kind: "member", id: acmeSeat.memberId } });
     expect(r!.person).toEqual({ kind: "member", id: acmeSeat.memberId });
+    expect(r!.personKnown).toBe(true);
     expect(sorted(r)).toEqual(["Its subtask", "Overdue"]);
   }, LONG);
 
   it("narrows to one project, and combines filters", async () => {
     const onlyB = await read(f.seats.owner.actor, { projectKey: keyB });
     expect(onlyB!.projectKey).toBe(keyB);
+    expect(onlyB!.projectKnown).toBe(true);
     expect(titles(onlyB)).toEqual(["Beta's"]);
     expect(sorted(await read(f.seats.owner.actor, { projectKey: keyA, due: "week", person: { kind: "none" } }))).toEqual([
       "Monday this week",
@@ -292,31 +296,38 @@ describe("listAllTasks — the filters", () => {
     // The pA-only seat is never offered the SIBLING project's person, nor can it filter by them.
     const p1View = await read(p1Seat.actor);
     expect(p1View!.people.map((p) => p.id)).not.toContain(siblingSeat.memberId);
+    // Slice 136 (the code review's M1): kept as asked and matching NOTHING —
+    // never the whole list under a saved view's name; empty says nothing.
     const asked = await read(p1Seat.actor, { person: { kind: "member", id: siblingSeat.memberId } });
-    expect(asked!.person).toBeNull();
-    expect(sorted(asked)).toEqual(sorted(p1View));
+    expect(asked!.person).toEqual({ kind: "member", id: siblingSeat.memberId });
+    expect(asked!.personKnown).toBe(false);
+    expect(titles(asked)).toEqual([]);
+    expect(byId(asked)).toEqual(byId(p1View));
   }, LONG);
 });
 
 describe("listAllTasks — scope", () => {
-  it("never lists a project the member does not reach, nor takes it as a filter", async () => {
+  it("never lists a project the member does not reach; asked for, it matches nothing — as a key that is nothing at all", async () => {
     const r = await read(acmeSeat.actor);
     expect(titles(r)).not.toContain("Beta's");
     expect(r!.projects.map((p) => p.key).sort()).toEqual([keyA, keyA2].sort());
     const asked = await read(acmeSeat.actor, { projectKey: keyB });
-    expect(asked!.projectKey).toBeNull();
-    expect(sorted(asked)).toEqual(sorted(r));
+    expect(asked!.projectKey).toBe(keyB);
+    expect(asked!.projectKnown).toBe(false);
+    expect(titles(asked)).toEqual([]);
+    // The same answer as a key that names no project anywhere: nothing is said.
+    const stray = await read(acmeSeat.actor, { projectKey: "NOSUCH" });
+    expect({ ...stray, projectKey: null, people: byId(stray) }).toEqual({ ...asked, projectKey: null, people: byId(asked) });
   }, LONG);
 
-  it("a member id from outside the scope is no filter, and says nothing", async () => {
-    const plain = await read(acmeSeat.actor);
+  it("a member id from outside the scope matches nothing, and says nothing", async () => {
     const asked = await read(acmeSeat.actor, { person: { kind: "member", id: betaSeat.memberId } });
-    expect(asked!.person).toBeNull();
-    expect(sorted(asked)).toEqual(sorted(plain));
-    // Nor an id that is nobody at all.
+    expect(asked!.personKnown).toBe(false);
+    expect(titles(asked)).toEqual([]);
+    // Nor an id that is nobody at all — the same answer.
     const stray = await read(acmeSeat.actor, { person: { kind: "member", id: randomUUID() } });
-    expect(stray!.person).toBeNull();
-    expect(sorted(stray)).toEqual(sorted(plain));
+    expect(stray!.personKnown).toBe(false);
+    expect({ ...stray, person: null, people: byId(stray) }).toEqual({ ...asked, person: null, people: byId(asked) });
   }, LONG);
 
   it("never lists a SIBLING project to a member who reaches one project of a client (no lifted scope)", async () => {
@@ -325,8 +336,8 @@ describe("listAllTasks — scope", () => {
     expect(r!.entries.every((e) => e.projectKey === keyA)).toBe(true);
     expect(titles(r)).not.toContain("Sibling's");
     const asked = await read(p1Seat.actor, { projectKey: keyA2 });
-    expect(asked!.projectKey).toBeNull();
-    expect(titles(asked)).not.toContain("Sibling's");
+    expect(asked!.projectKnown).toBe(false);
+    expect(titles(asked)).toEqual([]);
   }, LONG);
 
   it("leaves out an archived project's tasks, and the project", async () => {
@@ -335,6 +346,10 @@ describe("listAllTasks — scope", () => {
       const r = await read(f.seats.owner.actor);
       expect(titles(r)).not.toContain("Sibling's");
       expect(r!.projects.map((p) => p.key)).not.toContain(keyA2);
+      // A saved view of it now opens empty, saying so — never everyone's tasks (slice 136).
+      const asked = await read(f.seats.owner.actor, { projectKey: keyA2 });
+      expect(asked!.projectKnown).toBe(false);
+      expect(titles(asked)).toEqual([]);
     } finally {
       await f.platform.project.update({ where: { id: pA2 }, data: { archivedAt: null } });
     }

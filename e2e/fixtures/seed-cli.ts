@@ -56,6 +56,7 @@
  *        tsx e2e/fixtures/seed-cli.ts remove-users <email> [email…]
  *        tsx e2e/fixtures/seed-cli.ts template-source <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts clear-templates <tenantId>
+ *        tsx e2e/fixtures/seed-cli.ts clear-saved-views <tenantId>
  *        tsx e2e/fixtures/seed-cli.ts sweep [maxAgeMinutes]
  *        tsx e2e/fixtures/seed-cli.ts sweep-dbtests [maxAgeMinutes]
  */
@@ -257,6 +258,8 @@ const DBTEST_PREFIXES = [
   "lineup-",
   // Slice 131, moving a task to another project — `src/modules/work/move.dbtest.ts`, `setupTenant("mv")`.
   "mv-",
+  // Slice 136, saved views — `src/modules/work/saved-views.dbtest.ts`, `setupTenant("sview")`.
+  "sview-",
   "ordering-",
   "pauthz-",
   // Phase 3 slice 75, a client's comment on a shared task —
@@ -2248,6 +2251,9 @@ async function removeTenant(
   await db.notificationPreference.deleteMany({ where: { tenantId } });
   // Phone-notification devices (Phase 5 slice 106): RESTRICT the tenant.
   await db.pushSubscription.deleteMany({ where: { tenantId } });
+  // Saved views (slice 136): RESTRICT the tenant; they would go with their
+  // member and project below anyway (both cascade).
+  await db.savedView.deleteMany({ where: { tenantId } });
   await db.workflowPreset.deleteMany({ where: { tenantId } });
   await db.projectTemplate.deleteMany({ where: { tenantId } });
   // RESTRICTs the tenant. The browser fixture never writes one, so this
@@ -3134,6 +3140,22 @@ async function clearTemplates(tenantId: string): Promise<void> {
   const db = getPlatformClient();
   await assertE2ETenant(db, tenantId);
   const { count } = await db.projectTemplate.deleteMany({ where: { tenantId } });
+  await db.$disconnect();
+  process.stdout.write(`${MARKER}${JSON.stringify({ removed: count })}\n`);
+}
+
+/**
+ * Every saved view of a throwaway workspace deleted (slice 136,
+ * `saved-views.spec.ts`'s afterAll): a failed run must not leave a view in
+ * the e2e owner's left menu there. The platform role, so `own_view` does not
+ * hide them.
+ */
+async function clearSavedViews(tenantId: string): Promise<void> {
+  if (!tenantId) throw new Error("clear-saved-views: a tenant id");
+  const { getPlatformClient } = await import("../../src/db/client");
+  const db = getPlatformClient();
+  await assertE2ETenant(db, tenantId);
+  const { count } = await db.savedView.deleteMany({ where: { tenantId } });
   await db.$disconnect();
   process.stdout.write(`${MARKER}${JSON.stringify({ removed: count })}\n`);
 }
@@ -4610,6 +4632,7 @@ const main = async (): Promise<void> => {
   if (command === "reset-stage-preset") return resetStagePreset(argument!);
   if (command === "template-source") return templateSource(argument!);
   if (command === "clear-templates") return clearTemplates(argument!);
+  if (command === "clear-saved-views") return clearSavedViews(argument!);
   if (command === "repeat-due") return repeatDue(argument!, process.argv[4]!, process.argv[5]!);
   if (command === "run-repeats") return runRepeats(argument!);
   if (command === "calendar-workspace") return calendarWorkspace(argument!);

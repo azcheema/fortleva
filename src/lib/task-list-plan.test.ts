@@ -15,19 +15,21 @@ import {
   type TaskListParams,
 } from "./task-list-plan";
 
-const NONE: TaskListParams = { due: null, person: null, project: null, group: null, item: null };
+const NONE: TaskListParams = { due: null, person: null, project: null, group: null, item: null, view: null };
 const MEMBER = "0199a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5b";
+const VIEW = "0199a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a6c";
 
 describe("parseTaskListParams — read strictly, nothing echoed", () => {
   it("reads every parameter it knows", () => {
     expect(
-      parseTaskListParams({ due: "overdue", person: "none", project: "ACME", group: "person", item: "acme-12" }),
+      parseTaskListParams({ due: "overdue", person: "none", project: "ACME", group: "person", item: "acme-12", view: VIEW.toUpperCase() }),
     ).toEqual({
       due: "overdue",
       person: { kind: "none" },
       project: "ACME",
       group: "person",
       item: { projectKey: "ACME", number: 12 },
+      view: VIEW,
     });
     expect(parseTaskListParams({ due: "week", person: "me" })).toMatchObject({ due: "week", person: { kind: "me" } });
   });
@@ -44,6 +46,7 @@ describe("parseTaskListParams — read strictly, nothing echoed", () => {
         project: "acme",
         group: "label",
         item: "ACME-0",
+        view: "../tasks",
       }),
     ).toEqual(NONE);
     expect(parseTaskListParams({ project: "TOOLONGKEY", item: "ACME-1-2" })).toEqual(NONE);
@@ -65,13 +68,14 @@ describe("tasksHref — built from the parsed values only", () => {
         project: "ACME",
         group: "project",
         item: { projectKey: "ACME", number: 7 },
+        view: VIEW,
       }),
-    ).toBe(`/tasks?due=week&person=${MEMBER}&project=ACME&group=project&item=ACME-7`);
+    ).toBe(`/tasks?due=week&person=${MEMBER}&project=ACME&group=project&item=ACME-7&view=${VIEW}`);
     expect(tasksHref({ ...NONE, person: { kind: "none" } })).toBe("/tasks?person=none");
   });
 
   it("round-trips through the parser", () => {
-    const p: TaskListParams = { due: "overdue", person: { kind: "me" }, project: "WEB", group: "person", item: { projectKey: "WEB", number: 3 } };
+    const p: TaskListParams = { due: "overdue", person: { kind: "me" }, project: "WEB", group: "person", item: { projectKey: "WEB", number: 3 }, view: VIEW };
     const q = Object.fromEntries(new URLSearchParams(tasksHref(p).split("?")[1]));
     expect(parseTaskListParams(q)).toEqual(p);
   });

@@ -322,6 +322,7 @@ model Tenant {
   workItemRepeats                WorkItemRepeat[] // slice 127
   workItemRepeatItems            WorkItemRepeatItem[] // slice 127
   workItemAliases                WorkItemAlias[] // slice 131
+  savedViews                     SavedView[] // slice 136
   projectUpdateInternalSnapshots ProjectUpdateInternalSnapshot[]
   projectUpdateReminders         ProjectUpdateReminderSent[]
   projectUpdateTemplates         ProjectUpdateTemplate[]
@@ -475,6 +476,8 @@ model Member {
   staffNoticeAcknowledgments StaffNoticeAcknowledgment[]
   // Phase 5 slice 106: the devices that get this member's phone notifications.
   pushSubscriptions          PushSubscription[]
+  // Slice 136: this member's saved views of the Tasks page and backlogs.
+  savedViews                 SavedView[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id]) // composite-FK target
@@ -1084,6 +1087,8 @@ model Project {
   importJobs     ImportJob[]
   // Slice 131 — the old keys of tasks moved OUT of this project:
   workItemAliases WorkItemAlias[]
+  // Slice 136 — members' saved views of this project's backlog (cascade):
+  savedViews      SavedView[]
 
   @@unique([tenantId, id]) // composite-FK target
   @@unique([tenantId, key])
@@ -3055,6 +3060,42 @@ model WorkItemAlias {
   @@id([tenantId, projectId, number])
   @@index([tenantId, workItemId])
   @@map("work_item_alias")
+}
+
+/// Slice 136 (founder decision C113) — A SAVED VIEW: one member's named set
+/// of filters for the Tasks page (TASKS) or ONE project's backlog (BACKLOG,
+/// `projectId` set — CHECK), listed under Tasks in their left menu. `query` is
+/// the list's filters in canonical form (`src/lib/saved-view-plan.ts`; CHECK
+/// `saved_view_query_ok`); `name` one line ≤ 60, unique per member ignoring
+/// case (expression UNIQUE). THE MEMBER'S OWN: class A plus a RESTRICTIVE
+/// `own_view` policy — no colleague, owner or job reads or writes another's
+/// (migration 20261104090000). Goes with its member and with its project.
+model SavedView {
+  id        String        @id @default(uuid(7))
+  tenantId  String        @map("tenant_id")
+  memberId  String        @map("member_id")
+  kind      SavedViewKind
+  projectId String?       @map("project_id")
+  name      String
+  query     String        @default("")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  member  Member   @relation(fields: [tenantId, memberId], references: [tenantId, id], onDelete: Cascade)
+  project Project? @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+
+  // No @@index([tenantId, memberId]): the expression UNIQUE
+  // `saved_view_name_ci_key (tenant_id, member_id, lower(name))` serves it.
+  @@index([tenantId, projectId])
+  @@map("saved_view")
+}
+
+enum SavedViewKind {
+  TASKS
+  BACKLOG
+
+  @@map("saved_view_kind")
 }
 
 /// Extra members on an item (not the assignee). Drives notifications

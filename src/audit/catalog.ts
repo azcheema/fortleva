@@ -486,6 +486,17 @@ export const AUDIT_EVENTS = {
   // member no longer active) — the inbox's housekeeping precedent.
   "push_device.added": TENANT,
   "push_device.removed": TENANT,
+  // Slice 136 (founder decision C113) — a member's own SAVED VIEWS of the
+  // Tasks page or a backlog (`src/modules/work/saved-views.ts`): made, its
+  // filters replaced ("Update view"), renamed, deleted. Metadata: the kind
+  // only — NEVER the name, the filters or the project: this log is the
+  // workspace's (an owner's export carries every TENANT row), and a view's
+  // words and filters are its member's alone (C113 (a); the migration
+  // review's M1). Which view and who did it are the row's target and actor.
+  "saved_view.created": TENANT,
+  "saved_view.updated": TENANT,
+  "saved_view.renamed": TENANT,
+  "saved_view.deleted": TENANT,
   // Phase 5 slice 100 (founder decision C68 (c), (f)) — where replies to the
   // workspace's mail go (`src/notify/reply-address.ts`). `requested`,
   // `request_cancelled` and `removed` are a member's (`settings:edit`);

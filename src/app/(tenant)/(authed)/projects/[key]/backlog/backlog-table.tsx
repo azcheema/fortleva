@@ -58,6 +58,7 @@ import { BulkBar } from "@/components/work-view/bulk-bar";
 import { CopyTaskDialog, type CopySubject } from "@/components/work-view/copy-task-dialog";
 import { MoveTaskDialog, type MoveSubject } from "@/components/work-view/move-task-dialog";
 import { WorkFilterBar } from "@/components/work-view/filter-bar";
+import type { OpenView } from "@/components/work-view/saved-view-controls";
 import { LabelChips } from "@/components/work-view/label-chips";
 import { onCreateGroupBlur, useRootCreatePick } from "@/components/work-view/use-create-visibility";
 import { usePrivacyCopy } from "@/components/work-view/use-privacy-copy";
@@ -466,6 +467,7 @@ export function BacklogTable({
   includeArchived,
   peekOpen,
   timer,
+  openView,
 }: {
   projectId: string;
   projectKey: string;
@@ -489,6 +491,12 @@ export function BacklogTable({
    * REQUIRED, `null` included: it decides whether a row takes `T`.
    */
   timer: TimerPillState | null;
+  /**
+   * The reader's own saved view of this backlog the address names
+   * (`?view=`, slice 136), or null — REQUIRED: the filter bar's "Update
+   * view" compares against it.
+   */
+  openView: OpenView | null;
 }) {
   const t = useTranslations("projects.backlog");
   const tView = useTranslations("projects.workView");
@@ -1290,6 +1298,7 @@ export function BacklogTable({
         // the box would remove the box.
         hasClientWork={data.items.some((i) => i.assigneeContactId)}
         rollup={rollup}
+        savedView={{ projectId, openView }}
       />
       <DataTable flush scrollLabel={t("scrollLabel")}>
         <Table

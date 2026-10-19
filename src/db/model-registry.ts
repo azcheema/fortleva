@@ -123,6 +123,8 @@ export const MODEL_CLASSES = {
     "workItemRepeat",
     "workItemRepeatItem",
     "workItemAlias",
+    // Slice 136 — saved views (C113): one member's named filters.
+    "savedView",
   ],
   // Audit: tenantId nullable, append-only, reads injected, writes via audit.record()
   audit: ["auditEvent"],
@@ -316,6 +318,11 @@ export const RLS_CLASSES = {
     // Slice 131 — a moved task's old key (C108 (c)): the agency's own
     // bookkeeping, so an old link still finds the task. Never a client's.
     "workItemAlias",
+    // Slice 136 — a member's saved views (C113 (a)): only theirs. Beside
+    // portal_deny, a RESTRICTIVE `own_view` policy gives the member principal
+    // its own rows and nobody else any (not even SYSTEM); pinned by name in
+    // `isolation.dbtest.ts`.
+    "savedView",
   ],
   // credentialItem and clientAsset (Phase 3V): `projectId` is an anchor
   // and a filter, never a portal gate, so both are clientScoped with no

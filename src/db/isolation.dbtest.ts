@@ -383,12 +383,23 @@ describe("posture assertions", () => {
     // keeping a member's devices from their colleagues (Phase 5 slice 106).
     const CLASS_A_REQUIRED_EXTRA: Readonly<Record<string, readonly string[]>> = {
       pushSubscription: ["own_device"],
+      // Slice 136: the only thing keeping a member's saved views from their
+      // colleagues (C113 (a)).
+      savedView: ["own_view"],
     };
     for (const [m, names] of Object.entries(CLASS_A_REQUIRED_EXTRA)) {
       const p = of(m);
       for (const name of names) {
         expect(p.policies, `${p.table}: needs ${name}`).toContain(name);
         expect(p.quals[name] ?? "", `${p.table}: ${name} must key on the principal`).toContain("app.principal_id");
+        // …and on the MEMBER principal by kind — the term that keeps SYSTEM and
+        // the platform out today only because their principal id is '' (the
+        // security review's NIT 6).
+        expect(p.quals[name] ?? "", `${p.table}: ${name} must name the member principal`).toContain("'member'");
+        // PERMISSIVE it would OR with tenant_isolation and hand every
+        // colleague every row — the name and the qual would still pass
+        // (slice 136's migration review, L2; `own_device` is covered too).
+        expect(p.permissive, `${p.table}: ${name} must be RESTRICTIVE`).not.toContain(name);
       }
     }
     // Class B, both subclasses: tenant_isolation + portal_gate, the
