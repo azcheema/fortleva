@@ -43,7 +43,7 @@
  * the inbox, Phase 5 slice 104) were a registration rather than a
  * redesign.
  */
-export type KeyScope = "global" | "board" | "backlog" | "home" | "inbox" | "triage" | "item" | "modal";
+export type KeyScope = "global" | "board" | "backlog" | "home" | "tasks" | "inbox" | "triage" | "item" | "modal";
 
 /**
  * Precedence is THIS TABLE, never mount order. React runs child effects
@@ -51,15 +51,17 @@ export type KeyScope = "global" | "board" | "backlog" | "home" | "inbox" | "tria
  * `global` scope ABOVE the panel's `item` scope and invert shadowing —
  * a thing that would work only by luck.
  *
- * `board`/`backlog`/`home`/`inbox`/`triage` are peers: they are region
- * scopes on different surfaces and never mount together. `home` arrived
- * with the queue's row verbs (slice 24, 2026-09-17), the `backlog` way.
+ * `board`/`backlog`/`home`/`tasks`/`inbox`/`triage` are peers: they are
+ * region scopes on different surfaces and never mount together. `home`
+ * arrived with the queue's row verbs (slice 24, 2026-09-17), the `backlog`
+ * way; `tasks` with the Tasks page's (slice 137, 2026-10-19), Home's way.
  */
 export const SCOPE_ORDER: Record<KeyScope, number> = {
   global: 0,
   board: 10,
   backlog: 10,
   home: 10,
+  tasks: 10,
   inbox: 10,
   triage: 10,
   item: 20,
@@ -297,7 +299,8 @@ export function focusedKeyGuards(
  * keep for range selection. ONE table, so the lists that read it cannot
  * drift on which keys are a one-row move: the backlog today; the board
  * when its handler migrates to these guards (PLAN §0 records that as
- * owed — it still keeps its own `switch`); the triage lane; the inbox.
+ * owed — it still keeps its own `switch`); the triage lane; the inbox;
+ * Home's queue; the Tasks page.
  */
 export type RovingStep = { delta: 1 | -1; arrow: boolean };
 const ROVING_STEPS: Record<string, RovingStep> = {

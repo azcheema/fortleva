@@ -7,6 +7,7 @@ import { EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
+import { bounceMessage } from "@/lib/bounce";
 import { requireTenantContext } from "@/members/tenant-context";
 import { listHrefOf, peekHrefOf } from "@/lib/work-view";
 import { viewParamOf } from "@/lib/saved-view-plan";
@@ -43,7 +44,7 @@ export default async function ProjectBacklogPage({
   const [{ key }, query] = await Promise.all([params, searchParams]);
   const archived = typeof query["archived"] === "string" ? query["archived"] : undefined;
   const item = typeof query["item"] === "string" ? query["item"] : undefined;
-  const error = typeof query["error"] === "string" ? query["error"] : undefined;
+  const error = await bounceMessage(query["error"]);
   const project = await loadProject(key);
   const { membership, actor } = await requireTenantContext();
   const includeArchived = archived === "1";

@@ -1,7 +1,9 @@
 /**
  * WHERE A SIGN-IN MAY SEND SOMEBODY — one function, used by all three
  * sign-in surfaces, because a redirect target that came from a query
- * string is a redirect target an attacker wrote.
+ * string is a redirect target an attacker wrote. Since slice 137 also the
+ * step-up and enrol return path (`safeNextPath`, whose `//`-and-`/\`
+ * denylist let a TAB through) and the file actions' `returnTo`.
  *
  * **WHY IT EXISTS.** `src/proxy.ts` bounces every cookie-less request to
  * its plane's sign-in page carrying `?next=<pathname>` — a path the

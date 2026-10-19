@@ -18,64 +18,94 @@ import {
   softDeleteDocument,
   type CreateUploadResult,
 } from "@/documents/service";
+import { domainBounceOf, orBounce } from "@/lib/bounce";
+import type { BounceCode } from "@/lib/bounce-code";
 import { DomainError } from "@/lib/domain-error";
+import { safeNext } from "@/lib/safe-next";
 import { messageForError } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 
 /**
  * Server actions for files — used by /files and by the client/project
  * Files tabs. Tenant + actor come from the session
- * (requireTenantContext) — never from the form. Errors are flattened
- * to messages; MFA denials become step-up navigation.
+ * (requireTenantContext) — never from the form. A refusal is a message
+ * for the actions that answer (upload, visibility) and a CODE in `?error=`
+ * for the form POSTs that redirect (download, delete, sign-off ask —
+ * `orBounce`); MFA denials become step-up navigation.
  */
 
 export type ActionResult<T = undefined> =
   | { ok: true; value: T }
   | { ok: false; message: string };
 
-type Translate = Awaited<ReturnType<typeof getTranslations<"files.errors">>>;
-
-const messageOf = (t: Translate, e: unknown): string | null => {
+/** The `files.errors.*` key a refusal reads as here — or null for the member plane's own mapping. */
+const fileErrorKeyOf = (
+  e: unknown,
+):
+  | "quota"
+  | "notEntitled"
+  | "notFound"
+  | "forbidden"
+  | "typeNotAllowed"
+  | "sizeInvalid"
+  | "nameInvalid"
+  | "clientRequired"
+  | "uploadIncomplete"
+  | "notPending"
+  | "anchorInternal"
+  | null => {
   if (e instanceof AuthzError) {
     switch (e.reason) {
       case "NOT_ENTITLED":
-        return e.detail?.startsWith("maxStorageBytes") ? t("quota") : t("notEntitled");
+        return e.detail?.startsWith("maxStorageBytes") ? "quota" : "notEntitled";
       case "NOT_FOUND":
-        return t("notFound");
+        return "notFound";
       case "FORBIDDEN":
-        return t("forbidden");
-      default:
-        return e.message;
+        return "forbidden";
+      // A switched-off module, either way: `domainErrors`' NOT_ENTITLED reading
+      // (slice 137 — this was the error's own text, `DISABLED_BY_TENANT: …`).
+      case "FEATURE_DISABLED":
+      case "DISABLED_BY_TENANT":
+        return "notEntitled";
+      case "MFA_REQUIRED":
+        return null; // never reached: step-up navigation first
     }
   }
   if (e instanceof UploadRejectedError) {
     switch (e.code) {
       case "TYPE_NOT_ALLOWED":
-        return t("typeNotAllowed");
+        return "typeNotAllowed";
       case "SIZE_INVALID":
-        return t("sizeInvalid");
+        return "sizeInvalid";
       case "NAME_INVALID":
-        return t("nameInvalid");
+        return "nameInvalid";
     }
   }
-  if (e instanceof DomainError && e.code === "CLIENT_MISMATCH") return t("clientRequired");
-  // The sign-off refusals carry their own sentences (`domainErrors.*`);
-  // `messageForError` is the member plane's one mapping for those.
-  if (e instanceof DomainError && e.code.startsWith("SIGNOFF_")) return null;
+  if (e instanceof DomainError && e.code === "CLIENT_MISMATCH") return "clientRequired";
   if (e instanceof DocumentError) {
     switch (e.code) {
       case "UPLOAD_MISSING":
       case "UPLOAD_SIZE_MISMATCH":
-        return t("uploadIncomplete");
+        return "uploadIncomplete";
       case "NOT_PENDING":
-        return t("notPending");
+        return "notPending";
       case "CLIENT_REQUIRED":
-        return t("clientRequired");
+        return "clientRequired";
       case "ANCHOR_INTERNAL":
-        return t("anchorInternal");
+        return "anchorInternal";
     }
   }
+  // Any other domain refusal — the sign-off asks' own sentences, the
+  // attachment flip's VISIBILITY_BUSY (slice 72), which reached the member
+  // as a generic failure before this fallback — speaks the member plane's
+  // one mapping (`domainErrors.*`).
   return null;
+};
+
+/** A refusal as the page it bounces back to reads it (`?error=`, `bounce-code.ts`). */
+const fileBounceOf = (e: unknown): BounceCode | null => {
+  const key = fileErrorKeyOf(e);
+  return key !== null ? `files.${key}` : domainBounceOf(e);
 };
 
 async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResult<T>> {
@@ -83,19 +113,15 @@ async function guard<T>(path: string, fn: () => Promise<T>): Promise<ActionResul
     return { ok: true, value: await fn() };
   } catch (e) {
     handleAuthzRedirect(e, path);
-    const t = await getTranslations("files.errors");
-    // Any other domain refusal speaks the member plane's one mapping
-    // (`domainErrors.*`) rather than escaping as an unhandled error — the
-    // attachment flip's VISIBILITY_BUSY (slice 72) reached the member as a
-    // generic failure before this fallback.
-    const message = messageOf(t, e) ?? (e instanceof DomainError ? await messageForError(e) : null);
+    const key = fileErrorKeyOf(e);
+    const message = key !== null ? (await getTranslations("files.errors"))(key) : await messageForError(e);
     if (message) return { ok: false, message };
     throw e;
   }
 }
 
-/** Same-origin absolute path only (never an open redirect). */
-const SAFE_PATH = /^\/(?![/\\])/;
+/** Same-origin absolute path only (never an open redirect) — the sign-in surfaces' allowlist, `safeNext`. */
+const isSafePath = (v: string): boolean => safeNext(v, "/files") === v;
 
 /**
  * Where a document hangs (Phase 2): tenant-internal (nothing), a client
@@ -116,7 +142,7 @@ const targetSchema = z
     // on their timeline per version). The generated kinds are not a
     // choice — `UploadKind` in the service says why.
     kind: z.enum(["GENERAL", "DELIVERABLE"]).optional(),
-    returnTo: z.string().regex(SAFE_PATH).default("/files"),
+    returnTo: z.string().refine(isSafePath).default("/files"),
     // 2W-A: anchor to a work item — the anchor implies client + project
     // (derived from the item; the service refuses a disagreement).
     attachedToType: z.literal("WORK_ITEM").optional(),
@@ -180,50 +206,42 @@ export async function commitUploadAction(
 
 const returnToOf = (formData: FormData): string => {
   const v = formData.get("returnTo");
-  return typeof v === "string" && SAFE_PATH.test(v) ? v : "/files";
+  return typeof v === "string" ? safeNext(v, "/files") : "/files";
 };
 
-const withError = (path: string, message: string): string =>
-  `${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(message)}`;
+// The three form POSTs below answer a refusal by sending the member back to
+// `returnTo` with its CODE in `?error=` (`orBounce`) — never the sentence,
+// which a link anyone writes could otherwise put on the page (slice 137).
 
 export async function downloadAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
   const returnTo = returnToOf(formData);
   const { membership, actor } = await requireTenantContext();
-  const result = await guard(returnTo, () =>
-    getDownloadUrl({ tenantId: membership.tenantId, actor }, documentId),
+  const { url } = await orBounce(
+    returnTo,
+    () => getDownloadUrl({ tenantId: membership.tenantId, actor }, documentId),
+    fileBounceOf,
   );
-  if (!result.ok) redirect(withError(returnTo, result.message));
   // Off-origin, short-lived, Content-Disposition: attachment (SECURITY.md §5).
-  redirect(result.value.url);
+  redirect(url);
 }
 
 /**
  * Ask the client to sign a deliverable off (Phase 3, sign-off): a form
- * POST from the row's menu, back to the page it was on, with the
- * service's own sentence on a refusal — not a DELIVERABLE, not shared,
- * no committed file, an open ask, a standing approval of the newest
- * version. `messageForError` renders the `domainErrors.*` text; `guard`
- * above answers null for these so it reaches that mapping.
+ * POST from the row's menu, back to the page it was on, with the code of
+ * the service's own refusal — not a DELIVERABLE, not shared, no committed
+ * file, an open ask, a standing approval of the newest version: a
+ * `domainErrors.*` key, which `fileBounceOf` falls back to.
  */
 export async function requestDocumentSignoffAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
   const returnTo = returnToOf(formData);
   const { membership, actor } = await requireTenantContext();
-  let message: string | null = null;
-  try {
-    await requestDocumentSignoff({ tenantId: membership.tenantId, actor }, documentId);
-  } catch (e) {
-    handleAuthzRedirect(e, returnTo);
-    message = e instanceof DomainError ? await messageForError(e) : null;
-    if (message === null) {
-      const t = await getTranslations("files.errors");
-      const mapped = messageOf(t, e);
-      if (mapped === null) throw e;
-      message = mapped;
-    }
-  }
-  if (message !== null) redirect(withError(returnTo, message));
+  await orBounce(
+    returnTo,
+    () => requestDocumentSignoff({ tenantId: membership.tenantId, actor }, documentId),
+    fileBounceOf,
+  );
   revalidatePath(returnTo);
 }
 
@@ -231,17 +249,18 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
   const documentId = String(formData.get("documentId") ?? "");
   const returnTo = returnToOf(formData);
   const { membership, actor } = await requireTenantContext();
-  const result = await guard(returnTo, () =>
-    softDeleteDocument({ tenantId: membership.tenantId, actor }, documentId),
+  await orBounce(
+    returnTo,
+    () => softDeleteDocument({ tenantId: membership.tenantId, actor }, documentId),
+    fileBounceOf,
   );
-  if (!result.ok) redirect(withError(returnTo, result.message));
   revalidatePath(returnTo);
 }
 
 const visibilitySchema = z.object({
   documentId: z.uuid(),
   visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]),
-  returnTo: z.string().regex(SAFE_PATH).default("/files"),
+  returnTo: z.string().refine(isSafePath).default("/files"),
 });
 
 /**

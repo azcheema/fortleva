@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 import { AuthzError } from "@/authz/errors";
 import { handleAuthzRedirect } from "@/authz/redirects";
-import { DomainError } from "@/lib/domain-error";
+import { DomainError, type DomainErrorCode } from "@/lib/domain-error";
 
 /**
  * Server-action plumbing shared by the Phase-2 pages: run a service
@@ -29,11 +29,20 @@ const AUTHZ_MESSAGE_KEY: Record<AuthzError["reason"], "FORBIDDEN" | "NOT_FOUND" 
   MFA_REQUIRED: "FORBIDDEN", // never reached: redirected first
 };
 
-export async function messageForError(e: unknown): Promise<string | null> {
-  const t = await getTranslations("domainErrors");
-  if (e instanceof AuthzError) return t(AUTHZ_MESSAGE_KEY[e.reason]);
-  if (e instanceof DomainError) return t(e.code);
+/** The `domainErrors.*` key a refusal reads as — or null for anything else. */
+export type DomainMessageKey = DomainErrorCode | "FORBIDDEN" | "NOT_FOUND" | "NOT_ENTITLED";
+
+export function domainMessageKey(e: unknown): DomainMessageKey | null {
+  if (e instanceof AuthzError) return AUTHZ_MESSAGE_KEY[e.reason];
+  if (e instanceof DomainError) return e.code;
   return null;
+}
+
+export async function messageForError(e: unknown): Promise<string | null> {
+  const key = domainMessageKey(e);
+  if (key === null) return null;
+  const t = await getTranslations("domainErrors");
+  return t(key);
 }
 
 export async function runAction<T>(returnTo: string, fn: () => Promise<T>): Promise<ActionResult<T>> {

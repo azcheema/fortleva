@@ -144,7 +144,8 @@
         "inbox": "Inkorg",
         "triage": "Triage",
         "item": "Uppgift",
-        "home": "Hem"
+        "home": "Hem",
+        "tasks": "Uppgifter"
       },
       "always": "Alltid tillgängliga"
     },
@@ -7028,7 +7029,12 @@
     },
     "clearFilters": "Rensa filter",
     "projectGone": "Ett projekt som inte längre finns i listan",
-    "personGone": "Någon utan öppna uppgifter här"
+    "personGone": "Någon utan öppna uppgifter här",
+    "keys": {
+      "navigate": "Flytta mellan uppgifter",
+      "timer": "Starta eller stoppa en timer på uppgiften som har fokus"
+    },
+    "timerRunning": "Din timer är igång på den här uppgiften"
   },
   "savedViews": {
     "menuLabel": "Sparade vyer",

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+import { safeNext } from "@/lib/safe-next";
+
 import { AuthzError } from "./errors";
 
 /**
@@ -13,13 +15,15 @@ import { AuthzError } from "./errors";
 export const STEP_UP_PATH = "/account/step-up";
 export const ENROL_PATH = "/account";
 
-/** Only same-origin, absolute-path targets survive — never an open redirect. */
-export const safeNextPath = (next: string | null | undefined, fallback = "/dashboard"): string => {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) {
-    return fallback;
-  }
-  return next;
-};
+/**
+ * Only same-origin, absolute-path targets survive — never an open redirect.
+ * The sign-in surfaces' one allowlist (`safeNext`): it was a denylist of `//`
+ * and `/\` here, and `/%09/evil.example` — a TAB, which every URL parser drops
+ * — passed it as `//evil.example`, so the step-up page sent a member who had
+ * just typed their code to another site (slice 137's security review).
+ */
+export const safeNextPath = (next: string | null | undefined, fallback: `/${string}` = "/dashboard"): string =>
+  safeNext(next, fallback);
 
 export const stepUpUrl = (nextPath: string): string =>
   `${STEP_UP_PATH}?next=${encodeURIComponent(safeNextPath(nextPath))}`;

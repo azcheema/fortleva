@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
 import { withTenant } from "@/db";
 import { resolveTimeZone } from "@/i18n/resolve";
+import { bounceMessage } from "@/lib/bounce";
 import { todayIn } from "@/lib/due-date";
 import { dateColumn } from "@/lib/duration";
 import { STATUS_MAP, type Priority, type StatusValue } from "@/lib/enum-map";
@@ -29,16 +30,19 @@ import {
 } from "@/lib/task-list-plan";
 import { cn } from "@/lib/utils";
 import { requireTenantContext } from "@/members/tenant-context";
+import { canTrackTime } from "@/modules/time";
 import { followMovedKey, listAllTasks, resolveRowState } from "@/modules/work";
 import { readOpenSavedView } from "@/modules/work/saved-views";
 import { readPreferences } from "@/preferences/service";
 import { getProjectByKey, type ProjectDetail } from "@/projects/service";
 
 import { ItemPanel } from "../projects/[key]/item-panel/item-panel";
-import { loadPanelItem, loadPanelTimer } from "../projects/[key]/item-panel/panel-data";
+import { loadPanelItem } from "../projects/[key]/item-panel/panel-data";
 import { PeekShell } from "../projects/[key]/item-panel/peek-shell";
+import { getTimerStateAction } from "../time/actions";
 import { PeekFocusReturn } from "./peek-focus-return";
 import { TaskFilterBar } from "./task-filter-bar";
+import { RowTimerGlyph, RowTimerWords, TaskRowKeys } from "./task-row-keys";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("tasks");
@@ -157,12 +161,23 @@ export default async function TasksPage({
     if (moved) redirect(tasksHref({ ...listBase, item: { projectKey: moved.projectKey, number: moved.number } }));
   }
   const applied: TaskListParams = { ...listBase, item: peekItem && params.item ? params.item : null };
-  const peekTimer = peekItem && peekProject ? await loadPanelTimer(ctx, peekProject) : null;
+  const peekOpen = Boolean(peekItem && peekProject && applied.item);
+  // The member's timer as the pill sees it, or `null` where they can start
+  // none — read ONCE for the rows' `T` (slice 137) and the panel's control
+  // (`canTrackTime` is a transaction of its own; `getTimerStateAction` is the
+  // pill's per-request snapshot). The panel keeps `loadPanelTimer`'s other
+  // rule: no timer on an archived project's task. The list holds none.
+  const timer =
+    (read.entries.length > 0 || (peekOpen && !peekProject?.archivedAt)) && (await canTrackTime(ctx))
+      ? await getTimerStateAction()
+      : null;
+  const listTimer = read.entries.length > 0 ? timer : null;
+  const peekTimer = peekOpen && peekProject && !peekProject.archivedAt ? timer : null;
   let peekDocuments: DocumentListItem[] = [];
   if (peekItem && peekProject?.caps.viewDocuments) {
     peekDocuments = await listDocuments(ctx, { attachedToWorkItemId: peekItem.item.id });
   }
-  const error = typeof raw["error"] === "string" ? raw["error"] : undefined;
+  const error = await bounceMessage(raw["error"]);
 
   const shortDay = dateFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });
   const longDay = dateFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -262,7 +277,7 @@ export default async function TasksPage({
                 }
               />
             ) : (
-              <div data-testid="tasks-list">
+              <TaskRowKeys timer={listTimer} peekOpen={peekOpen}>
                 {groups.map((group) => (
                   <section
                     key={group.key}
@@ -286,14 +301,19 @@ export default async function TasksPage({
                               href={row.href}
                               scroll={false}
                               data-task-key={row.key}
-                              className="flex min-h-10 min-w-0 items-center gap-3 px-4 py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                              // `J K` always; `T` where it acts (`TaskRowKeys`). `scroll-mt-16`
+                              // clears the sticky header when a step scrolls a row into view.
+                              aria-keyshortcuts={listTimer ? "J K T" : "J K"}
+                              className="flex min-h-10 min-w-0 scroll-mt-16 scroll-mb-4 items-center gap-3 px-4 py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                             >
                               {state ? <StatusIcon name={state.icon} aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
                               {/* Below `sm` the title needs the room more than the key does — the peek names it. */}
                               <span className="num-id hidden shrink-0 text-xs text-muted-foreground sm:inline sm:min-w-[10ch]">{row.key}</span>
-                              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={row.title}>
+                              {listTimer ? <RowTimerGlyph itemId={row.id} /> : null}
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium" title={row.title} data-task-title="">
                                 {row.title}
                               </span>
+                              {listTimer ? <RowTimerWords itemId={row.id} /> : null}
                               {applied.group !== "project" ? (
                                 <>
                                   <span className="hidden w-36 shrink-0 truncate text-xs text-muted-foreground sm:block" title={row.projectName}>
@@ -349,13 +369,13 @@ export default async function TasksPage({
                     </ul>
                   </section>
                 ))}
-              </div>
+              </TaskRowKeys>
             )}
           </PeekFocusReturn>
         </SectionCard>
       </div>
 
-      {peekItem && peekProject && applied.item ? (
+      {peekOpen && peekItem && peekProject ? (
         <PeekShell returnHref={listHref}>
           <ItemPanel
             surface="tasks"

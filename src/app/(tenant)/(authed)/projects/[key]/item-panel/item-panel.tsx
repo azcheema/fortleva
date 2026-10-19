@@ -116,7 +116,8 @@ export async function ItemPanel({
   workspaceTimeZone: string;
   /** A failed download/delete bounces back as `?error=` (the Files-tab
    * contract) — the panel must show it, or a failure looks like nothing
-   * happened (the standing rule). */
+   * happened (the standing rule). The SENTENCE the page looked the code up
+   * as (`bounceMessage`, slice 137), never the address's own text. */
   error?: string;
   /**
    * WHICH surface this is, not merely how it looks. The property
@@ -154,9 +155,10 @@ export async function ItemPanel({
   /** REQUIRED — whether it repeats, or is an older copy of a task that does (`getItemDetail`'s, slice 127). */
   repeat: ItemRepeat;
   /**
-   * REQUIRED — `loadPanelTimer`'s answer: the member's timer as the pill
-   * sees it, or `null` where no timer control belongs (no `time:track`,
-   * or an archived project). An archived TASK is decided here.
+   * REQUIRED — `loadPanelTimer`'s answer (on /tasks the page's own read, the
+   * same rule): the member's timer as the pill sees it, or `null` where no
+   * timer control belongs (no `time:track`, or an archived project). An
+   * archived TASK is decided here.
    */
   timer: TimerPillState | null;
 }) {

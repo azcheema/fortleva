@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { withTenant } from "@/db";
 import { listExports, type ExportListItem } from "@/export/service";
+import { bounceMessage } from "@/lib/bounce";
 import { bytesParts } from "@/lib/format";
 import { requireTenantContext } from "@/members/tenant-context";
 
@@ -54,7 +55,7 @@ export default async function ExportPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { membership, actor } = await requireTenantContext();
-  const { error } = await searchParams;
+  const error = await bounceMessage((await searchParams).error);
   const t = await getTranslations("settings.export");
   const tCommon = await getTranslations("common");
   const format = await getFormatter();

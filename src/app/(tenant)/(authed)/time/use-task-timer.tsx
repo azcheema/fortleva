@@ -50,7 +50,8 @@ type Notice = { id: string; version: number; title: string; body: string };
  * and the start follows their acknowledgment, on the task they pressed
  * for. The text is fetched on the press, never carried on every render.
  *
- * `initial` is the surface's own server read (`loadPanelTimer`), and `null`
+ * `initial` is the surface's own server read (`loadPanelTimer`, or the page's
+ * `getTimerStateAction` on Home and /tasks), and `null`
  * where this member can start no timer: then nothing is running here and
  * `toggle` does nothing. The caller claims no key there — the panel renders
  * no control, the board and the backlog register their `T` row disabled

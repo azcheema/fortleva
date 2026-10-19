@@ -144,7 +144,8 @@
         "inbox": "Inbox",
         "triage": "Triage",
         "item": "Task",
-        "home": "Home"
+        "home": "Home",
+        "tasks": "Tasks"
       },
       "always": "Always available"
     },
@@ -7028,7 +7029,12 @@
     },
     "clearFilters": "Clear filters",
     "projectGone": "A project no longer in this list",
-    "personGone": "Someone with no open tasks here"
+    "personGone": "Someone with no open tasks here",
+    "keys": {
+      "navigate": "Move between tasks",
+      "timer": "Start or stop a timer on the focused task"
+    },
+    "timerRunning": "Your timer is running on this task"
   },
   "savedViews": {
     "menuLabel": "Saved views",

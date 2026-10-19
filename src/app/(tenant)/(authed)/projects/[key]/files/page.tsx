@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { Callout, EmptyState, SectionCard } from "@/components/semantic";
 import { Button } from "@/components/ui/button";
 import { listDocuments } from "@/documents/service";
+import { bounceMessage } from "@/lib/bounce";
 import { requireTenantContext } from "@/members/tenant-context";
 
 import { DocumentsTable } from "../../../files/documents-table";
@@ -25,7 +26,7 @@ export default async function ProjectFilesPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { key } = await params;
-  const { error } = await searchParams;
+  const error = await bounceMessage((await searchParams).error);
   const project = await loadProject(key);
   const t = await getTranslations("projects.files");
   const tFiles = await getTranslations("files");

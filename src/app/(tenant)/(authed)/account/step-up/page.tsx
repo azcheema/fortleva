@@ -29,10 +29,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function StepUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string | string[] }>;
 }) {
   const session = await requireMemberSession();
-  const next = safeNextPath((await searchParams).next);
+  // A repeated `next` is an array, which no check could read as a path (it threw — a 500).
+  const raw = (await searchParams).next;
+  const next = safeNextPath(typeof raw === "string" ? raw : null);
   const enrolled = (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled === true;
   if (!enrolled) redirect(enrolUrl(next));
   const t = await getTranslations("account.stepUp");

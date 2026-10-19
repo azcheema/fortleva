@@ -534,9 +534,10 @@ export const stops = (seed: E2ESeed): Stop[] => {
     // not worth removing a loading boundary over.
     { name: "404-app", path: "/clients/no-such-client-id", status: [200, 404] },
     {
-      // The in-page failure banner: what a withError() redirect makes.
+      // The in-page failure banner: what a refused download's redirect makes —
+      // a CODE the page looks up (`bounce-code.ts`, slice 137), never a sentence.
       name: "error-banner",
-      path: `/files?error=${encodeURIComponent("The file could not be downloaded. Try again.")}`,
+      path: "/files?error=files.notFound",
     },
     {
       // The error boundary, reached the only way it can be without

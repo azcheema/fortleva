@@ -8,6 +8,7 @@ import { Callout, EmptyState, Page, PageHeader, SectionCard } from "@/components
 import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { listDocuments } from "@/documents/service";
+import { bounceMessage } from "@/lib/bounce";
 import { requireTenantContext } from "@/members/tenant-context";
 
 import { DocumentsTable } from "./documents-table";
@@ -31,7 +32,7 @@ export default async function FilesPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { membership, actor } = await requireTenantContext();
-  const { error } = await searchParams;
+  const error = await bounceMessage((await searchParams).error);
   const t = await getTranslations("files");
   const tCommon = await getTranslations("common");
   const ctx = { tenantId: membership.tenantId, actor };

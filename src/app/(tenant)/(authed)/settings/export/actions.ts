@@ -7,12 +7,15 @@ import { z } from "zod";
 
 import { getExportDownloadUrl } from "@/documents/service";
 import { deleteExport, generateTenantExport } from "@/export/service";
-import { runAction, runForm, type FormResult } from "@/lib/server-actions";
+import { orBounce } from "@/lib/bounce";
+import { withBounce } from "@/lib/bounce-code";
+import { runForm, type FormResult } from "@/lib/server-actions";
 import { requireTenantContext } from "@/members/tenant-context";
 
 /**
  * Server actions for /settings/export — every one `tenant:export` (✦):
- * runForm / runAction turn MFA_REQUIRED into step-up navigation back here.
+ * runForm (generate) and orBounce (download, delete) turn MFA_REQUIRED into
+ * step-up navigation back here.
  * Generate; DOWNLOAD (slice 136b: its own path, `getExportDownloadUrl` —
  * presigned, attachment-only, audited file.downloaded + export.downloaded —
  * no longer Files' `downloadAction`, which now never reaches an export); and
@@ -39,24 +42,23 @@ export async function generateExportAction(): Promise<FormResult> {
 
 const uuid = z.uuid();
 
-const withError = (message: string): string => `${PATH}?error=${encodeURIComponent(message)}`;
+// A refusal comes back here as its CODE in `?error=`, never its sentence
+// (`orBounce`, slice 137).
 
 /** The row's download: off to the presigned URL, or back here with the refusal. */
 export async function downloadExportAction(formData: FormData): Promise<void> {
   const id = uuid.safeParse(formData.get("documentId"));
   const ctx = await ctxOf();
-  if (!id.success) redirect(withError((await getTranslations("common"))("invalidInput")));
-  const r = await runAction(PATH, () => getExportDownloadUrl(ctx, id.data));
-  if (!r.ok) redirect(withError(r.message));
-  redirect(r.value.url);
+  if (!id.success) redirect(withBounce(PATH, "domain.INVALID_INPUT"));
+  const { url } = await orBounce(PATH, () => getExportDownloadUrl(ctx, id.data));
+  redirect(url);
 }
 
 /** The row menu's Delete, after its confirmation. */
 export async function deleteExportAction(formData: FormData): Promise<void> {
   const id = uuid.safeParse(formData.get("documentId"));
   const ctx = await ctxOf();
-  if (!id.success) redirect(withError((await getTranslations("common"))("invalidInput")));
-  const r = await runAction(PATH, () => deleteExport(ctx, id.data));
-  if (!r.ok) redirect(withError(r.message));
+  if (!id.success) redirect(withBounce(PATH, "domain.INVALID_INPUT"));
+  await orBounce(PATH, () => deleteExport(ctx, id.data));
   revalidatePath(PATH);
 }

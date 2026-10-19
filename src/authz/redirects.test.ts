@@ -41,5 +41,15 @@ describe("MFA_REQUIRED → navigation (AUTHZ.md §7.5 deferred denial)", () => {
     expect(safeNextPath("/\\evil.example")).toBe("/dashboard");
     expect(safeNextPath(null)).toBe("/dashboard");
     expect(safeNextPath("/members")).toBe("/members");
+    expect(safeNextPath("/tasks?item=WEB-3&person=me")).toBe("/tasks?item=WEB-3&person=me");
+  });
+
+  it("refuses what a URL parser turns into another origin — a tab, a newline, a backslash inside, a `..` (slice 137)", () => {
+    // The WHATWG parser drops tabs and newlines, so `/\t/evil.example` is
+    // `//evil.example`: the step-up page's `next` sent a member off-site.
+    for (const next of ["/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/ /evil.example", "/a\\..\\b", "/x/../../evil", "/\u0000/x"]) {
+      expect(safeNextPath(next), JSON.stringify(next)).toBe("/dashboard");
+      expect(mfaRedirectTarget(new AuthzError("MFA_REQUIRED", "step_up"), next)).toBe("/account/step-up?next=%2Fdashboard");
+    }
   });
 });

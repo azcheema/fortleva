@@ -190,8 +190,8 @@ export async function setProjectArchivedAction(
 
 // ── Portal switch + hours sharing (project:manage_portal since 2026-09-21) ──
 // Both are driven from /projects/[key]/portal, so `returnTo` is that tab
-// rather than Overview: a withError() redirect must land the member back
-// on the control they pressed.
+// rather than Overview: a step-up redirect must land the member back on
+// the control they pressed.
 
 export async function setPortalEnabledAction(
   projectId: string,

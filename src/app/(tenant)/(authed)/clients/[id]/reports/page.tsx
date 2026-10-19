@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { withTenant } from "@/db";
 import { defaultReportMonth, latestReportMonth, reportMonthFormValue } from "@/documents/report-month";
 import { listClientReports } from "@/documents/reports";
+import { bounceMessage } from "@/lib/bounce";
 import { localDateString } from "@/lib/duration";
 import { requireTenantContext } from "@/members/tenant-context";
 import { readPreferences } from "@/preferences/service";
@@ -35,7 +36,7 @@ export default async function ClientReportsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const error = await bounceMessage((await searchParams).error);
   const client = await loadClient(id);
   if (!client.caps.viewReports) notFound();
   const { membership, actor } = await requireTenantContext();

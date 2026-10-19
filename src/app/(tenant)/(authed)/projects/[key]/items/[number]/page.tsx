@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { withTenant } from "@/db";
 import { listDocuments, type DocumentListItem } from "@/documents/service";
+import { bounceMessage } from "@/lib/bounce";
 import { requireTenantContext } from "@/members/tenant-context";
 import { followMovedKey } from "@/modules/work";
 import { readPreferences } from "@/preferences/service";
@@ -44,7 +45,7 @@ export default async function ProjectItemPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [{ key, number }, query] = await Promise.all([params, searchParams]);
-  const error = typeof query["error"] === "string" ? query["error"] : undefined;
+  const error = await bounceMessage(query["error"]);
   // The Activity section's keyset cursor (UI.md §5.4): one of this
   // task's row ids, or nothing — the service decides which, and a cursor
   // that is not one is the newest page, never a 404.
