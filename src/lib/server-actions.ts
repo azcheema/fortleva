@@ -20,17 +20,27 @@ export type ActionResult<T = undefined> =
 /** `caution`: it worked, but see the message (`caution()` below). */
 export type FormResult = { ok: boolean; message: string; caution?: boolean };
 
-const AUTHZ_MESSAGE_KEY: Record<AuthzError["reason"], "FORBIDDEN" | "NOT_FOUND" | "NOT_ENTITLED"> = {
+type AuthzMessageKey = "FORBIDDEN" | "NOT_FOUND" | "NOT_ENTITLED" | "FEATURE_DISABLED" | "DISABLED_BY_TENANT";
+
+/**
+ * Each gate's own words (AUTHZ.md §5's evaluation order): the kill-switch is
+ * "temporarily unavailable", the plan "not included", the workspace's own
+ * switch "someone who can switch modules can switch it on"
+ * (`settings:manage_modules`). Both switches read as the plan before (slice
+ * 137's follow-up ended it), sending a member to a plan that already included
+ * the module.
+ */
+const AUTHZ_MESSAGE_KEY: Record<AuthzError["reason"], AuthzMessageKey> = {
   FORBIDDEN: "FORBIDDEN",
   NOT_FOUND: "NOT_FOUND",
   NOT_ENTITLED: "NOT_ENTITLED",
-  FEATURE_DISABLED: "NOT_ENTITLED",
-  DISABLED_BY_TENANT: "NOT_ENTITLED",
+  FEATURE_DISABLED: "FEATURE_DISABLED",
+  DISABLED_BY_TENANT: "DISABLED_BY_TENANT",
   MFA_REQUIRED: "FORBIDDEN", // never reached: redirected first
 };
 
 /** The `domainErrors.*` key a refusal reads as — or null for anything else. */
-export type DomainMessageKey = DomainErrorCode | "FORBIDDEN" | "NOT_FOUND" | "NOT_ENTITLED";
+export type DomainMessageKey = DomainErrorCode | AuthzMessageKey;
 
 export function domainMessageKey(e: unknown): DomainMessageKey | null {
   if (e instanceof AuthzError) return AUTHZ_MESSAGE_KEY[e.reason];

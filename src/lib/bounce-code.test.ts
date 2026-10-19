@@ -56,10 +56,10 @@ describe("isOwnMessage", () => {
   });
 
   it("finds the codes written as literals — the type checks only their catalogue's name — in BOTH languages", () => {
-    // AuthzError's three readings (`domainMessageKey`) and the export
+    // AuthzError's five readings (`domainMessageKey`) and the export
     // actions' `domain.INVALID_INPUT`; the files keys are typed by `t()`.
     for (const messages of [en, sv]) {
-      for (const key of ["FORBIDDEN", "NOT_FOUND", "NOT_ENTITLED", "INVALID_INPUT"]) {
+      for (const key of ["FORBIDDEN", "NOT_FOUND", "NOT_ENTITLED", "FEATURE_DISABLED", "DISABLED_BY_TENANT", "INVALID_INPUT"]) {
         expect(isOwnMessage(messages.domainErrors, key), key).toBe(true);
       }
     }

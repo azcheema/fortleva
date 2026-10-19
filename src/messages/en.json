@@ -1981,6 +1981,8 @@
     "NOT_FOUND": "Not found.",
     "FORBIDDEN": "You do not have permission to do that.",
     "NOT_ENTITLED": "Not included in your plan.",
+    "FEATURE_DISABLED": "This is temporarily unavailable. Try again later.",
+    "DISABLED_BY_TENANT": "This is switched off for this workspace. Someone who can switch modules on and off can switch it on in Settings → Preferences.",
     "NOTICE_UNACKNOWLEDGED": "Read and acknowledge the time-tracking notice before you start a timer or clock in.",
     "TIMER_ALREADY_RUNNING": "A timer is already running — stop it first.",
     "TIMER_NOT_RUNNING": "No timer is running.",

@@ -8,8 +8,9 @@ import type { FormResult } from "@/lib/server-actions";
  * THE PORTAL'S SERVER-ACTION RUNNER — `runAction()`'s opposite number,
  * and the difference between them is the whole reason this file exists.
  *
- * `src/lib/server-actions.ts` maps an `AuthzError` to one of three
- * distinct messages (NOT_FOUND / FORBIDDEN / NOT_ENTITLED) and a
+ * `src/lib/server-actions.ts` maps an `AuthzError` to one of five
+ * distinct messages (NOT_FOUND / FORBIDDEN / NOT_ENTITLED /
+ * FEATURE_DISABLED / DISABLED_BY_TENANT) and a
  * `DomainError` to its own code's message, because on the member plane
  * every one of those is a fact about the reader's OWN agency and the
  * reader is entitled to it. On the contact plane none of that holds.

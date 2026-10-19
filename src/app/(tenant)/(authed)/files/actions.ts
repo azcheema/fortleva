@@ -62,11 +62,12 @@ const fileErrorKeyOf = (
         return "notFound";
       case "FORBIDDEN":
         return "forbidden";
-      // A switched-off module, either way: `domainErrors`' NOT_ENTITLED reading
-      // (slice 137 — this was the error's own text, `DISABLED_BY_TENANT: …`).
+      // A switched-off module speaks the member plane's own words for it,
+      // `domainErrors.*` (slice 137 — this was the error's own text,
+      // `DISABLED_BY_TENANT: …`).
       case "FEATURE_DISABLED":
       case "DISABLED_BY_TENANT":
-        return "notEntitled";
+        return null;
       case "MFA_REQUIRED":
         return null; // never reached: step-up navigation first
     }

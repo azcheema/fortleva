@@ -27,8 +27,9 @@ import { portalDisclosableCode } from "./action";
  * looks each one up there, so a code with no key is already a bug — and
  * `messages.test.ts` pins en/sv parity, so the list cannot rot in one
  * locale. The same reasoning `kind-copy.test.ts` uses for notification
- * kinds. It contains three entries that are AuthzError reasons rather
- * than domain codes (NOT_FOUND / FORBIDDEN / NOT_ENTITLED); they are
+ * kinds. It contains five entries that are AuthzError reasons rather
+ * than domain codes (NOT_FOUND / FORBIDDEN / NOT_ENTITLED /
+ * FEATURE_DISABLED / DISABLED_BY_TENANT); they are
  * left in deliberately, because the right answer for them is the same
  * "no" and asserting it costs nothing.
  */

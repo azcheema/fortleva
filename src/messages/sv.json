@@ -1981,6 +1981,8 @@
     "NOT_FOUND": "Hittades inte.",
     "FORBIDDEN": "Du har inte behörighet att göra det.",
     "NOT_ENTITLED": "Ingår inte i din plan.",
+    "FEATURE_DISABLED": "Det här är tillfälligt otillgängligt. Försök igen senare.",
+    "DISABLED_BY_TENANT": "Det här är avstängt för den här arbetsytan. Den som får slå på och av moduler kan slå på det under Inställningar → Preferenser.",
     "NOTICE_UNACKNOWLEDGED": "Läs och bekräfta informationen om tidsregistrering innan du startar en timer eller stämplar in.",
     "TIMER_ALREADY_RUNNING": "En timer är redan igång — stoppa den först.",
     "TIMER_NOT_RUNNING": "Ingen timer är igång.",
